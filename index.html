@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🐱 Meow Printer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link href="static/style.css" rel="stylesheet">
+</head>
+<body>
+
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="logo">🐱 <span>Meow</span>Printer</div>
+  <div class="topbar-gap"></div>
+  <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">☀</button>
+  <button class="tb-btn" onclick="openDrawer()">⚙ Printer</button>
+  <div class="tb-btn bt-pill" id="bt-pill" onclick="toggleBT()">
+    <div class="bt-dot" id="bt-dot"></div>
+    <span id="bt-lbl">Disconnected</span>
+  </div>
+  <button class="print-btn" id="print-all-btn" onclick="printAll()">🖨 Print All</button>
+</div>
+
+<!-- MOBILE TABS -->
+<div class="mobile-tabs" id="mobile-tabs">
+  <button class="on" onclick="showMobileTab('blocks',this)">📦 Blocks</button>
+  <button onclick="showMobileTab('preview',this)">📄 Preview</button>
+</div>
+
+<!-- WORKSPACE -->
+<div class="workspace" id="workspace">
+
+  <!-- PALETTE (desktop sidebar) -->
+  <div class="palette" id="palette-desktop">
+    <div class="palette-hdr">+ Add Block</div>
+    <button class="ptype-btn" onclick="addBlock('text')"><span class="pi">✏️</span><span class="pd"><span class="pn">Text</span><span class="ps">font, size, align</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('inverted')"><span class="pi">◼</span><span class="pd"><span class="pn">Inverted Text</span><span class="ps">white on black</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('image')"><span class="pi">🖼</span><span class="pd"><span class="pn">Image</span><span class="ps">dithering + contrast</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('qr')"><span class="pi">◼</span><span class="pd"><span class="pn">QR Code</span><span class="ps">URL / text</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('barcode')"><span class="pi">▦</span><span class="pd"><span class="pn">Barcode</span><span class="ps">Code128</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('table')"><span class="pi">📋</span><span class="pd"><span class="pn">Table</span><span class="ps">rows & columns</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('checklist')"><span class="pi">☑</span><span class="pd"><span class="pn">Checklist</span><span class="ps">todo list</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('drawing')"><span class="pi">✍️</span><span class="pd"><span class="pn">Drawing</span><span class="ps">freehand / signature</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('logo')"><span class="pi">🏷</span><span class="pd"><span class="pn">Logo / Header</span><span class="ps">image header stamp</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('countdown')"><span class="pi">⏳</span><span class="pd"><span class="pn">Countdown</span><span class="ps">days to date</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('ruler')"><span class="pi">📏</span><span class="pd"><span class="pn">Ruler</span><span class="ps">measurement scale</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('datetime')"><span class="pi">🕐</span><span class="pd"><span class="pn">Date / Time</span><span class="ps">auto timestamp</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('separator')"><span class="pi">—</span><span class="pd"><span class="pn">Separator</span><span class="ps">line styles</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('spacer')"><span class="pi">↕</span><span class="pd"><span class="pn">Spacer</span><span class="ps">blank padding</span></span></button>
+  </div>
+
+  <!-- COMPOSER -->
+  <div class="composer mob-visible" id="composer">
+    <div class="composer-hdr">
+      <h2>LAYOUT</h2>
+      <span class="blk-count" id="blk-count">0 blocks</span>
+      <div class="hdr-gap"></div>
+      <button class="sm-btn" onclick="refreshPreview()">↺ Preview</button>
+      <button class="sm-btn" style="margin-left:4px" onclick="clearAll()">✕ Clear</button>
+    </div>
+    <div class="block-list" id="block-list">
+      <div class="empty-state" id="empty-state">
+        <span class="es-icon">🐾</span>
+        No blocks yet.<br>Add one from the palette.
+      </div>
+    </div>
+  </div>
+
+  <!-- PREVIEW -->
+  <div class="preview-col" id="preview-col">
+    <div class="prev-hdr">
+      <h2>PREVIEW</h2>
+      <div class="prev-acts">
+        <div class="ico-btn" title="Download PNG" onclick="downloadPreview()">⬇</div>
+        <div class="ico-btn" title="Refresh" onclick="refreshPreview()">↺</div>
+      </div>
+    </div>
+    <div class="paper-scroll" id="paper-scroll">
+      <div class="paper-wrap" id="paper-wrap">
+        <div class="paper-edge-top"></div>
+        <div class="paper-body">
+          <canvas id="preview-canvas" width="384" height="100"></canvas>
+        </div>
+        <div class="paper-edge-bottom"></div>
+      </div>
+    </div>
+    <div class="prog-bar" id="prog-bar">
+      <div class="prog-track"><div class="prog-fill" id="prog-fill"></div></div>
+      <div class="prog-txt" id="prog-txt">Printing…</div>
+    </div>
+  </div>
+
+</div><!-- /workspace -->
+
+<!-- MOBILE BOTTOM PALETTE -->
+<div class="palette-mobile" id="palette-mobile">
+  <button class="ptype-icon-btn" onclick="addBlock('text')" title="Text">✏️</button>
+  <button class="ptype-icon-btn" onclick="addBlock('inverted')" title="Inverted Text">◼</button>
+  <button class="ptype-icon-btn" onclick="addBlock('image')" title="Image">🖼</button>
+  <button class="ptype-icon-btn" onclick="addBlock('qr')" title="QR Code">◼</button>
+  <button class="ptype-icon-btn" onclick="addBlock('barcode')" title="Barcode">▦</button>
+  <button class="ptype-icon-btn" onclick="addBlock('table')" title="Table">📋</button>
+  <button class="ptype-icon-btn" onclick="addBlock('checklist')" title="Checklist">☑</button>
+  <button class="ptype-icon-btn" onclick="addBlock('drawing')" title="Drawing">✍️</button>
+  <button class="ptype-icon-btn" onclick="addBlock('logo')" title="Logo">🏷</button>
+  <button class="ptype-icon-btn" onclick="addBlock('countdown')" title="Countdown">⏳</button>
+  <button class="ptype-icon-btn" onclick="addBlock('ruler')" title="Ruler">📏</button>
+  <button class="ptype-icon-btn" onclick="addBlock('datetime')" title="Date/Time">🕐</button>
+  <button class="ptype-icon-btn" onclick="addBlock('separator')" title="Separator">—</button>
+  <button class="ptype-icon-btn" onclick="addBlock('spacer')" title="Spacer">↕</button>
+</div>
+
+<!-- SIMULATION OVERLAY -->
+<div class="sim-overlay" id="sim-overlay">
+  <div class="sim-box">
+    <h3>🐱 Print Simulation</h3>
+
+    <!-- Printer shell: window top, roller bottom -->
+    <div class="sim-printer">
+      <!-- Paper viewing window (top) -->
+      <div class="sim-paper-exit">
+        <div class="sim-paper-strip" id="sim-paper-strip">
+          <canvas id="sim-canvas" width="200" height="10"></canvas>
+        </div>
+      </div>
+      <!-- LED between window and roller -->
+      <div class="sim-led" id="sim-led"></div>
+      <!-- Roller slot (bottom — paper feeds in from here upward) -->
+      <div class="sim-slot">
+        <div class="sim-roller-inner" id="sim-roller"></div>
+      </div>
+    </div>
+
+    <!-- Progress bar -->
+    <div class="sim-progress-row">
+      <div class="sim-prog-track"><div class="sim-prog-fill" id="sim-prog-fill"></div></div>
+      <div class="sim-prog-pct" id="sim-prog-pct">0%</div>
+    </div>
+
+    <div class="sim-note">
+      Dry-run mode · packets generated, not transmitted<br>
+      <strong id="sim-stats"></strong>
+    </div>
+    <button class="sim-close" id="sim-close-btn" onclick="closeSim()" disabled>Printing…</button>
+  </div>
+</div>
+
+<!-- PRINTER SETTINGS DRAWER -->
+<div class="drawer-bg" id="drawer-bg" onclick="if(event.target===this)closeDrawer()">
+  <div class="drawer">
+    <h3>⚙ Printer Settings <button class="drawer-close" onclick="closeDrawer()">✕</button></h3>
+
+    <div class="drawer-section">Density Preset</div>
+    <div class="density-grid" id="density-grid">
+      <div class="density-opt on" onclick="setDensity('draft',this)">
+        <div class="do-name">Draft</div><div class="do-sub">E:3000 S:8</div>
+      </div>
+      <div class="density-opt" onclick="setDensity('normal',this)">
+        <div class="do-name">Normal</div><div class="do-sub">E:8000 S:5</div>
+      </div>
+      <div class="density-opt" onclick="setDensity('bold',this)">
+        <div class="do-name">Bold</div><div class="do-sub">E:18000 S:3</div>
+      </div>
+      <div class="density-opt" onclick="setDensity('max',this)">
+        <div class="do-name">Max</div><div class="do-sub">E:40000 S:1</div>
+      </div>
+    </div>
+
+    <div class="drawer-grid" style="margin-top:14px">
+      <div class="drawer-section">Manual Override</div>
+
+      <div class="fr">
+        <label>Model</label>
+        <select id="p-model">
+          <option value="GB01">GB01</option><option value="GB02">GB02</option>
+          <option value="GB03" selected>GB03</option><option value="MX05">MX05</option>
+          <option value="MX06">MX06</option><option value="MX08">MX08</option>
+          <option value="MX10">MX10</option>
+        </select>
+      </div>
+      <div class="fr">
+        <label>Print Width (px)</label>
+        <select id="p-width">
+          <option value="384" selected>384 px (standard)</option>
+          <option value="256">256 px</option>
+          <option value="192">192 px</option>
+        </select>
+      </div>
+      <div class="fr">
+        <label>Energy (1–65535) — <span id="ev-e" style="color:var(--y)">3000</span></label>
+        <input type="range" min="1000" max="65535" step="500" value="3000" id="p-energy"
+          oninput="document.getElementById('ev-e').textContent=this.value">
+      </div>
+      <div class="fr">
+        <label>Speed (1–8 slower=darker) — <span id="ev-s" style="color:var(--y)">8</span></label>
+        <input type="range" min="1" max="8" value="8" id="p-speed"
+          oninput="document.getElementById('ev-s').textContent=this.value">
+      </div>
+      <div class="fr">
+        <label>Final Feed (pts) — <span id="ev-f" style="color:var(--y)">80</span></label>
+        <input type="range" min="0" max="200" value="80" id="p-feed"
+          oninput="document.getElementById('ev-f').textContent=this.value">
+      </div>
+      <div class="fr">
+        <label>Mode</label>
+        <select id="p-dryrun">
+          <option value="0">Real Print (Bluetooth)</option>
+          <option value="1" selected>Dry Run (Simulation)</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="qr-scratch" style="position:absolute;left:-9999px;top:0"></div>
+<div id="toast"></div>
+
+<!-- <script src="static/catprotocol.js"></script> -->
+<script src="static/meowprinter.js"></script>
+
+</body>
+</html>
