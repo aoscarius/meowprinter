@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🐱 Meow Printer</title>
+<title>Meow Printer</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,400;0,500;1,400&family=Unbounded:wght@400;700;900&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <link href="static/style.css" rel="stylesheet">
@@ -14,13 +14,15 @@
 <div class="topbar">
   <div class="logo">🐱 <span>Meow</span>Printer</div>
   <div class="topbar-gap"></div>
-  <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">☀</button>
-  <button class="tb-btn" onclick="openDrawer()">⚙ Printer</button>
-  <div class="tb-btn bt-pill" id="bt-pill" onclick="toggleBT()">
-    <div class="bt-dot" id="bt-dot"></div>
-    <span id="bt-lbl">Disconnected</span>
+  <div class="topbar-buttons">
+    <button class="theme-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle theme">☀</button>
+    <button class="tb-btn" onclick="openDrawer()">⚙ Printer</button>
+    <div class="tb-btn bt-pill" id="bt-pill" onclick="toggleBT()">
+      <div class="bt-dot" id="bt-dot"></div>
+      <span id="bt-lbl">Disconnected</span>
+    </div>
+    <button class="print-btn" id="print-all-btn" onclick="printAll()">🖨 Print All</button>
   </div>
-  <button class="print-btn" id="print-all-btn" onclick="printAll()">🖨 Print All</button>
 </div>
 
 <!-- MOBILE TABS -->
@@ -49,6 +51,17 @@
     <button class="ptype-btn" onclick="addBlock('datetime')"><span class="pi">🕐</span><span class="pd"><span class="pn">Date / Time</span><span class="ps">auto timestamp</span></span></button>
     <button class="ptype-btn" onclick="addBlock('separator')"><span class="pi">—</span><span class="pd"><span class="pn">Separator</span><span class="ps">line styles</span></span></button>
     <button class="ptype-btn" onclick="addBlock('spacer')"><span class="pi">↕</span><span class="pd"><span class="pn">Spacer</span><span class="ps">blank padding</span></span></button>
+
+    <button class="ptype-btn" onclick="addBlock('asciiart')"><span class="pi">▓</span><span class="pd"><span class="pn">ASCII Art</span><span class="ps">pixel bitmap font</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('bigtext')"><span class="pi">𝐀</span><span class="pd"><span class="pn">Big Text</span><span class="ps">giant impact letters</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('receipt')"><span class="pi">🧾</span><span class="pd"><span class="pn">Receipt</span><span class="ps">items + tax + total</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('wifi')"><span class="pi">📶</span><span class="pd"><span class="pn">WiFi QR</span><span class="ps">scan to connect</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('note')"><span class="pi">📝</span><span class="pd"><span class="pn">Note / Box</span><span class="ps">bordered text</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('progress')"><span class="pi">▰</span><span class="pd"><span class="pn">Progress Bar</span><span class="ps">value %</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('badge')"><span class="pi">🏷</span><span class="pd"><span class="pn">Name Badge</span><span class="ps">hello my name is</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('grid')"><span class="pi">⊞</span><span class="pd"><span class="pn">Grid / Graph</span><span class="ps">notebook paper</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('tags')"><span class="pi">🔖</span><span class="pd"><span class="pn">Tags / Labels</span><span class="ps">pill tags</span></span></button>
+    <button class="ptype-btn" onclick="addBlock('calendar')"><span class="pi">📅</span><span class="pd"><span class="pn">Calendar</span><span class="ps">monthly view</span></span></button>
   </div>
 
   <!-- COMPOSER -->
@@ -110,6 +123,17 @@
   <button class="ptype-icon-btn" onclick="addBlock('datetime')" title="Date/Time">🕐</button>
   <button class="ptype-icon-btn" onclick="addBlock('separator')" title="Separator">—</button>
   <button class="ptype-icon-btn" onclick="addBlock('spacer')" title="Spacer">↕</button>
+  
+  <button class="ptype-icon-btn" onclick="addBlock('asciiart')" title="ASCII Art">▓</button>
+  <button class="ptype-icon-btn" onclick="addBlock('bigtext')" title="Big Text">𝐀</button>
+  <button class="ptype-icon-btn" onclick="addBlock('receipt')" title="Receipt">🧾</button>
+  <button class="ptype-icon-btn" onclick="addBlock('wifi')" title="WiFi QR">📶</button>
+  <button class="ptype-icon-btn" onclick="addBlock('note')" title="Note/Box">📝</button>
+  <button class="ptype-icon-btn" onclick="addBlock('progress')" title="Progress">▰</button>
+  <button class="ptype-icon-btn" onclick="addBlock('badge')" title="Name Badge">🏷</button>
+  <button class="ptype-icon-btn" onclick="addBlock('grid')" title="Grid">⊞</button>
+  <button class="ptype-icon-btn" onclick="addBlock('tags')" title="Tags">🔖</button>
+  <button class="ptype-icon-btn" onclick="addBlock('calendar')" title="Calendar">📅</button>
 </div>
 
 <!-- SIMULATION OVERLAY -->

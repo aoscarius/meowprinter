@@ -25,22 +25,9 @@ const CRC8T = new Uint8Array([
   0xde,0xd9,0xd0,0xd7,0xc2,0xc5,0xcc,0xcb,0xe6,0xe1,0xe8,0xef,
   0xfa,0xfd,0xf4,0xf3
 ]);
- 
-function crc8(data) {
-  let crc = 0;
-  for (const byte of data) crc = CRC8T[(crc ^ byte) & 0xff];
-  return crc & 0xff;
-}
-
-function bytesLE(val, len = 1) {
-  const r = new Uint8Array(len);
-  for (let i = 0; i < len; i++) { r[i] = val & 0xff; val >>= 8; }
-  return r;
-}
-
-function delay(ms) { 
-  return new Promise(r => setTimeout(r, ms)); 
-}
+function crc8(d){let c=0;for(const b of d)c=CRC8T[(c^b)&0xff];return c&0xff}
+function bytesLE(v,n=1){const r=new Uint8Array(n);for(let i=0;i<n;i++){r[i]=v&0xff;v>>=8}return r}
+function delay(ms){return new Promise(r=>setTimeout(r,ms))}
 
 class CatPrinter{
   constructor(model,writeFn,dry=false){
@@ -162,9 +149,19 @@ const BDEF={
   datetime: {format:'full',size:16,align:'center'},
   separator:{style:'solid',thickness:2,padding:10},
   spacer:   {height:30},
+  asciiart:  {text:'HELLO\nWORLD', font:'block', invert:false, scale:2},
+  bigtext:   {text:'SALE!', font:'banner', align:'center'},
+  receipt:   {items:[{label:'Item A',price:'5.00'},{label:'Item B',price:'12.50'}], tax:10, currency:'€', title:'Receipt'},
+  wifi:      {ssid:'MyNetwork', password:'secret123', hidden:false},
+  note:      {text:'Note text here', style:'box', align:'left', size:14},
+  progress:  {label:'Progress', value:70, style:'filled'},
+  badge:     {line1:'HELLO', line2:'my name is', line3:'Claude', size1:14, size2:22, size3:32},
+  grid:      {cols:4, rows:4, cellW:20, label:''},
+  tags:      {items:['tag1','tag2','tag3'], style:'rounded'},
+  calendar:  {month:0, year:0},
 };
-const BNAME={text:'Text',inverted:'Inverted Text',image:'Image',qr:'QR Code',barcode:'Barcode',table:'Table',checklist:'Checklist',drawing:'Drawing',logo:'Logo / Header',countdown:'Countdown',ruler:'Ruler',datetime:'Date & Time',separator:'Separator',spacer:'Spacer'};
-const BICON={text:'✏️',inverted:'◼',image:'🖼',qr:'◼',barcode:'▦',table:'📋',checklist:'☑',drawing:'✍️',logo:'🏷',countdown:'⏳',ruler:'📏',datetime:'🕐',separator:'—',spacer:'↕'};
+const BNAME={text:'Text',inverted:'Inverted Text',image:'Image',qr:'QR Code',barcode:'Barcode',table:'Table',checklist:'Checklist',drawing:'Drawing',logo:'Logo / Header',countdown:'Countdown',ruler:'Ruler',asciiart:'ASCII Art',bigtext:'Big Text',receipt:'Receipt',wifi:'WiFi QR',note:'Note / Box',progress:'Progress Bar',badge:'Name Badge',grid:'Grid / Graph',tags:'Tags',calendar:'Calendar',datetime:'Date & Time',separator:'Separator',spacer:'Spacer'};
+const BICON={text:'✏️',inverted:'◼',image:'🖼',qr:'◼',barcode:'▦',table:'📋',checklist:'☑',drawing:'✍️',logo:'🏷',countdown:'⏳',ruler:'📏',asciiart:'▓',bigtext:'𝐀',receipt:'🧾',wifi:'📶',note:'📝',progress:'▰',badge:'🏷',grid:'⊞',tags:'🔖',calendar:'📅',datetime:'🕐',separator:'—',spacer:'↕'};
 
 function addBlock(type){
   const id='b'+(++idSeq);
@@ -201,6 +198,16 @@ function bSummary(b){
   if(b.type==='checklist')return b.items.length+' items';
   if(b.type==='countdown')return b.target;
   if(b.type==='ruler')return b.width+'% width';
+  if(b.type==='asciiart')return b.text.split('\n')[0].substring(0,20);
+  if(b.type==='bigtext')return b.text.substring(0,20);
+  if(b.type==='receipt')return b.title;
+  if(b.type==='wifi')return b.ssid;
+  if(b.type==='note')return b.text.substring(0,20);
+  if(b.type==='progress')return b.label+' '+b.value+'%';
+  if(b.type==='badge')return b.line3;
+  if(b.type==='grid')return b.cols+'×'+b.rows;
+  if(b.type==='tags')return b.items.join(', ').substring(0,20);
+  if(b.type==='calendar')return b.month&&b.year?b.month+'/'+b.year:'current';
   return '';
 }
 
@@ -319,7 +326,7 @@ function bBodyHTML(b){
       <div class="fg">
         <div class="fr"><label>Size — <span id="sv_${id}">${b.size}</span>px</label><div class="rr"><input type="range" min="8" max="72" value="${b.size}" oninput="updateBlk('${id}','size',+this.value);document.getElementById('sv_${id}').textContent=this.value;schedulePreview()"></div></div>
         <div class="fr"><label>Align</label><select onchange="updateBlk('${id}','align',this.value);schedulePreview()"><option value="left"${b.align==='left'?' selected':''}>◀ Left</option><option value="center"${b.align==='center'?' selected':''}>◆ Center</option><option value="right"${b.align==='right'?' selected':''}>▶ Right</option></select></div>
-        <div class="fr"><label>Font</label><select onchange="updateBlk('${id}','font',this.value);schedulePreview()"><option value="monospace">Monospace</option><option value="serif">Serif</option><option value="sans-serif">Sans-serif</option></select></div>
+        <div class="fr"><label>Font</label><select onchange="updateBlk('${id}','font',this.value);schedulePreview()"><option value="monospace">Monospace</option><option value="serif">Serif</option><option value="sans-serif">Sans-serif</option><option value="'Courier New'">Courier New</option><option value="'Georgia'">Georgia</option><option value="'Impact'">Impact</option><option value="'Arial Black'">Arial Black</option><option value="'Trebuchet MS'">Trebuchet MS</option><option value="'Palatino'">Palatino</option><option value="'Lucida Console'">Lucida Console</option></select></div>
         <div class="fr"><label>Weight</label><select onchange="updateBlk('${id}','bold',this.value);schedulePreview()"><option value="normal">Normal</option><option value="bold"${b.bold==='bold'?' selected':''}>Bold</option></select></div>
       </div>`;
 
@@ -404,7 +411,126 @@ function bBodyHTML(b){
 
     case 'spacer': return `
       <div class="fr"><label>Height — <span id="spv_${id}">${b.height}</span>px</label><div class="rr"><input type="range" min="4" max="200" value="${b.height}" oninput="updateBlk('${id}','height',+this.value);document.getElementById('spv_${id}').textContent=this.value;schedulePreview()"></div></div>`;
-  }
+  
+    case 'asciiart': return `
+      <div class="fr"><label>Text (one word per line for best results)</label><textarea rows="3" oninput="updateBlk('${id}','text',this.value);updSummary('${id}',this.value.split('\n')[0]);schedulePreview()">${b.text}</textarea></div>
+      <div class="fg">
+        <div class="fr"><label>Style</label><select onchange="updateBlk('${id}','font',this.value);schedulePreview()">
+          <option value="block"${b.font==='block'?' selected':''}>Block ▓</option>
+          <option value="shadow"${b.font==='shadow'?' selected':''}>Shadow</option>
+          <option value="outline"${b.font==='outline'?' selected':''}>Outline □</option>
+          <option value="thin"${b.font==='thin'?' selected':''}>Thin lines</option>
+          <option value="dots"${b.font==='dots'?' selected':''}>Dots ●</option>
+        </select></div>
+        <div class="fr"><label>Scale — <span id="asc_${id}">${b.scale}</span>x</label><div class="rr"><input type="range" min="1" max="4" step="1" value="${b.scale}" oninput="updateBlk('${id}','scale',+this.value);document.getElementById('asc_${id}').textContent=this.value;schedulePreview()"></div></div>
+        <div class="fr"><label>Invert</label><select onchange="updateBlk('${id}','invert',this.value==='1');schedulePreview()"><option value="0"${!b.invert?' selected':''}>No</option><option value="1"${b.invert?' selected':''}>Yes</option></select></div>
+      </div>`;
+
+    case 'bigtext': return `
+      <div class="fr"><label>Text (large block letters)</label><input type="text" value="${b.text}" oninput="updateBlk('${id}','text',this.value);updSummary('${id}',this.value);schedulePreview()"></div>
+      <div class="fg">
+        <div class="fr"><label>Style</label><select onchange="updateBlk('${id}','font',this.value);schedulePreview()">
+          <option value="banner"${b.font==='banner'?' selected':''}>Banner (Impact)</option>
+          <option value="block"${b.font==='block'?' selected':''}>Bold Block</option>
+          <option value="outline"${b.font==='outline'?' selected':''}>Outline stroke</option>
+        </select></div>
+        <div class="fr"><label>Align</label><select onchange="updateBlk('${id}','align',this.value);schedulePreview()">
+          <option value="left">Left</option>
+          <option value="center"${b.align==='center'?' selected':''}>Center</option>
+          <option value="right">Right</option>
+        </select></div>
+      </div>`;
+
+    case 'receipt': return `
+      <div class="fr"><label>Receipt Title</label><input type="text" value="${b.title}" oninput="updateBlk('${id}','title',this.value);schedulePreview()"></div>
+      <div class="fg">
+        <div class="fr"><label>Currency symbol</label><input type="text" value="${b.currency}" oninput="updateBlk('${id}','currency',this.value);schedulePreview()"></div>
+        <div class="fr"><label>Tax % — <span id="rx_${id}">${b.tax}</span></label><div class="rr"><input type="range" min="0" max="30" value="${b.tax}" oninput="updateBlk('${id}','tax',+this.value);document.getElementById('rx_${id}').textContent=this.value;schedulePreview()"></div></div>
+      </div>
+      <div id="ri_${id}" style="margin-top:8px;display:flex;flex-direction:column;gap:3px">
+        ${b.items.map((it,i)=>`<div style="display:grid;grid-template-columns:1fr 64px 22px;gap:3px">
+          <input class="tce" value="${it.label}" placeholder="Item" oninput="receiptItemUpdate('${id}',${i},'label',this.value)">
+          <input class="tce" value="${it.price}" placeholder="0.00" oninput="receiptItemUpdate('${id}',${i},'price',this.value)">
+          <button class="bact del" onclick="receiptItemRemove('${id}',${i})">✕</button></div>`).join('')}
+      </div>
+      <button class="add-row-btn" style="margin-top:4px" onclick="receiptItemAdd('${id}')">+ Add item</button>`;
+
+    case 'wifi': return `
+      <div class="fr"><label>Network name (SSID)</label><input type="text" value="${b.ssid}" oninput="updateBlk('${id}','ssid',this.value);updSummary('${id}',this.value);schedulePreview()"></div>
+      <div class="fr"><label>Password</label><input type="text" value="${b.password}" oninput="updateBlk('${id}','password',this.value);schedulePreview()"></div>
+      <div class="fg">
+        <div class="fr"><label>Security</label><select onchange="updateBlk('${id}','security',this.value);schedulePreview()">
+          <option value="WPA">WPA/WPA2</option>
+          <option value="WEP">WEP</option>
+          <option value="nopass">Open (no password)</option>
+        </select></div>
+        <div class="fr"><label>Hidden network</label><select onchange="updateBlk('${id}','hidden',this.value==='1');schedulePreview()">
+          <option value="0">No</option><option value="1">Yes</option>
+        </select></div>
+      </div>`;
+
+    case 'note': return `
+      <div class="fr"><label>Content</label><textarea oninput="updateBlk('${id}','text',this.value);schedulePreview()">${b.text}</textarea></div>
+      <div class="fg">
+        <div class="fr"><label>Border</label><select onchange="updateBlk('${id}','style',this.value);schedulePreview()">
+          <option value="box"${b.style==='box'?' selected':''}>Box ┌─┐</option>
+          <option value="double"${b.style==='double'?' selected':''}>Double ╔═╗</option>
+          <option value="round"${b.style==='round'?' selected':''}>Rounded ╭─╮</option>
+          <option value="shadow"${b.style==='shadow'?' selected':''}>Shadow</option>
+          <option value="none"${b.style==='none'?' selected':''}>None</option>
+        </select></div>
+        <div class="fr"><label>Font size — <span id="ns_${id}">${b.size}</span></label><div class="rr"><input type="range" min="10" max="28" value="${b.size}" oninput="updateBlk('${id}','size',+this.value);document.getElementById('ns_${id}').textContent=this.value;schedulePreview()"></div></div>
+        <div class="fr"><label>Align</label><select onchange="updateBlk('${id}','align',this.value);schedulePreview()">
+          <option value="left"${b.align==='left'?' selected':''}>Left</option>
+          <option value="center"${b.align==='center'?' selected':''}>Center</option>
+          <option value="right">Right</option>
+        </select></div>
+      </div>`;
+
+    case 'progress': return `
+      <div class="fr"><label>Label</label><input type="text" value="${b.label}" oninput="updateBlk('${id}','label',this.value);schedulePreview()"></div>
+      <div class="fg">
+        <div class="fr"><label>Value — <span id="pv_${id}">${b.value}</span>%</label><div class="rr"><input type="range" min="0" max="100" value="${b.value}" oninput="updateBlk('${id}','value',+this.value);document.getElementById('pv_${id}').textContent=this.value;schedulePreview()"></div></div>
+        <div class="fr"><label>Style</label><select onchange="updateBlk('${id}','style',this.value);schedulePreview()">
+          <option value="filled"${b.style==='filled'?' selected':''}>Filled ████</option>
+          <option value="hollow"${b.style==='hollow'?' selected':''}>Hollow [████  ]</option>
+          <option value="dots"${b.style==='dots'?' selected':''}>Dots ●●●○○</option>
+          <option value="steps"${b.style==='steps'?' selected':''}>Steps ▁▃▅▇</option>
+        </select></div>
+      </div>`;
+
+    case 'badge': return `
+      <div class="fr"><label>Small top line</label><input type="text" value="${b.line1}" oninput="updateBlk('${id}','line1',this.value);schedulePreview()"></div>
+      <div class="fr"><label>Medium line</label><input type="text" value="${b.line2}" oninput="updateBlk('${id}','line2',this.value);schedulePreview()"></div>
+      <div class="fr"><label>Large name line</label><input type="text" value="${b.line3}" oninput="updateBlk('${id}','line3',this.value);updSummary('${id}',this.value);schedulePreview()"></div>
+      <div class="fg">
+        <div class="fr"><label>Size 1 — <span id="b1_${id}">${b.size1}</span></label><div class="rr"><input type="range" min="8" max="30" value="${b.size1}" oninput="updateBlk('${id}','size1',+this.value);document.getElementById('b1_${id}').textContent=this.value;schedulePreview()"></div></div>
+        <div class="fr"><label>Size 2 — <span id="b2_${id}">${b.size2}</span></label><div class="rr"><input type="range" min="14" max="40" value="${b.size2}" oninput="updateBlk('${id}','size2',+this.value);document.getElementById('b2_${id}').textContent=this.value;schedulePreview()"></div></div>
+        <div class="fr"><label>Size 3 — <span id="b3_${id}">${b.size3}</span></label><div class="rr"><input type="range" min="20" max="60" value="${b.size3}" oninput="updateBlk('${id}','size3',+this.value);document.getElementById('b3_${id}').textContent=this.value;schedulePreview()"></div></div>
+      </div>`;
+
+    case 'grid': return `
+      <div class="fg">
+        <div class="fr"><label>Columns — <span id="gc_${id}">${b.cols}</span></label><div class="rr"><input type="range" min="2" max="16" value="${b.cols}" oninput="updateBlk('${id}','cols',+this.value);document.getElementById('gc_${id}').textContent=this.value;updSummary('${id}',this.value+'×'+document.getElementById('gr_${id}').textContent);schedulePreview()"></div></div>
+        <div class="fr"><label>Rows — <span id="gr_${id}">${b.rows}</span></label><div class="rr"><input type="range" min="2" max="20" value="${b.rows}" oninput="updateBlk('${id}','rows',+this.value);document.getElementById('gr_${id}').textContent=this.value;schedulePreview()"></div></div>
+        <div class="fr"><label>Cell size — <span id="gcs_${id}">${b.cellW}</span>px</label><div class="rr"><input type="range" min="8" max="48" value="${b.cellW}" oninput="updateBlk('${id}','cellW',+this.value);document.getElementById('gcs_${id}').textContent=this.value;schedulePreview()"></div></div>
+        <div class="fr"><label>Label (optional)</label><input type="text" value="${b.label}" oninput="updateBlk('${id}','label',this.value);schedulePreview()"></div>
+      </div>`;
+
+    case 'tags': return `
+      <div class="fr"><label>Tags (comma separated)</label><input type="text" value="${b.items.join(', ')}" oninput="updateBlk('${id}','items',this.value.split(',').map(s=>s.trim()).filter(Boolean));schedulePreview()"></div>
+      <div class="fr"><label>Style</label><select onchange="updateBlk('${id}','style',this.value);schedulePreview()">
+        <option value="rounded"${b.style==='rounded'?' selected':''}>Rounded pill</option>
+        <option value="square"${b.style==='square'?' selected':''}>Square</option>
+        <option value="inverted"${b.style==='inverted'?' selected':''}>Inverted</option>
+      </select></div>`;
+
+    case 'calendar': return `
+      <div class="fg">
+        <div class="fr"><label>Month (0=current)</label><input type="number" min="0" max="12" value="${b.month||0}" oninput="updateBlk('${id}','month',+this.value);schedulePreview()"></div>
+        <div class="fr"><label>Year (0=current)</label><input type="number" min="0" max="2099" value="${b.year||0}" oninput="updateBlk('${id}','year',+this.value);schedulePreview()"></div>
+      </div>`;
+    }
   return '';
 }
 
@@ -779,8 +905,349 @@ async function renderBlock(b){
       const cvs=document.createElement('canvas');cvs.width=W;cvs.height=b.height;
       const ctx=cvs.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,W,b.height);return cvs;
     }
+    
+    case 'asciiart':
+      return renderAsciiArt(b.text||'?', b.font, b.invert, b.scale, W);
+
+    case 'bigtext': {
+      const text=b.text||'';
+      const sz=Math.min(Math.floor(W/(Math.max(text.length,1))*0.88), 90);
+      let fontStr;
+      if(b.font==='outline'){
+        // render normally then stroke
+        const tmpCvs=renderText(text,sz,b.align,"Impact, Arial Black, sans-serif",'bold',W,false);
+        const tmpCtx=tmpCvs.getContext('2d');
+        tmpCtx.font=`bold ${sz}px Impact, Arial Black, sans-serif`;
+        tmpCtx.textAlign=b.align;
+        const x=b.align==='left'?2:b.align==='right'?W-2:W/2;
+        tmpCtx.strokeStyle='#000';tmpCtx.lineWidth=2;
+        tmpCtx.strokeText(text,x,sz+2);
+        return tmpCvs;
+      }
+      fontStr = b.font==='block' ? "monospace" : "Impact, Arial Black, sans-serif";
+      return renderText(text,sz,b.align,fontStr,'bold',W,false);
+    }
+
+    case 'receipt': {
+      const FS=13,LH=FS*1.55,PAD=8;
+      const subtotal=b.items.reduce((s,it)=>s+parseFloat(it.price||0),0);
+      const taxAmt=subtotal*b.tax/100;
+      const total=subtotal+taxAmt;
+      const cvs=document.createElement('canvas');
+      cvs.width=W;
+      cvs.height=PAD*2+(FS+4)+8+3*LH+b.items.length*LH+(b.tax>0?LH:0)+PAD;
+      const ctx=cvs.getContext('2d');
+      ctx.fillStyle='#fff';ctx.fillRect(0,0,W,cvs.height);
+      let y=PAD;
+      ctx.font=`bold ${FS+2}px monospace`;ctx.fillStyle='#000';ctx.textAlign='center';
+      ctx.fillText(b.title||'Receipt',W/2,y+FS+2);y+=FS+8;
+      const dash='─'.repeat(Math.floor((W-PAD*2)/8));
+      ctx.font=`${FS}px monospace`;ctx.textAlign='left';ctx.fillText(dash,PAD,y);y+=LH;
+      ctx.font=`bold ${FS}px monospace`;ctx.fillText('Item',PAD,y);ctx.textAlign='right';ctx.fillText('Price',W-PAD,y);y+=LH;
+      ctx.textAlign='left';ctx.font=`${FS}px monospace`;ctx.fillText(dash,PAD,y);y+=LH;
+      b.items.forEach(it=>{
+        ctx.textAlign='left';ctx.fillText(String(it.label).substring(0,22),PAD,y);
+        ctx.textAlign='right';ctx.fillText(`${b.currency}${parseFloat(it.price||0).toFixed(2)}`,W-PAD,y);y+=LH;
+      });
+      ctx.textAlign='left';ctx.fillText(dash,PAD,y);y+=LH;
+      if(b.tax>0){ctx.fillText(`Tax (${b.tax}%)`,PAD,y);ctx.textAlign='right';ctx.fillText(`${b.currency}${taxAmt.toFixed(2)}`,W-PAD,y);y+=LH;}
+      ctx.font=`bold ${FS+2}px monospace`;ctx.textAlign='left';ctx.fillText('TOTAL',PAD,y);ctx.textAlign='right';ctx.fillText(`${b.currency}${total.toFixed(2)}`,W-PAD,y);
+      return cvs;
+    }
+
+    case 'wifi': {
+      const sec=b.security||'WPA';
+      const wifiStr=`WIFI:T:${sec==='nopass'?'nopass':sec};S:${b.ssid};P:${b.password};H:${b.hidden?'true':'false'};;`;
+      const fakeQR={type:'qr',content:wifiStr,margin:10,label:'📶 '+b.ssid};
+      return renderBlock(fakeQR);
+    }
+
+    case 'note': {
+      const FS=b.size||14,LH=FS*1.4,PAD=12,BW=2;
+      const tc=document.createElement('canvas').getContext('2d');
+      tc.font=`${FS}px monospace`;
+      const innerW=W-PAD*2-BW*2-8;
+      const wrLines=[];
+      for(const para of b.text.split('\n')){
+        const words=para.split(' ');let cur='';
+        for(const w of words){const t=cur?cur+' '+w:w;if(tc.measureText(t).width>innerW&&cur){wrLines.push(cur);cur=w}else cur=t}
+        wrLines.push(cur===''&&para===''?'':cur);
+      }
+      const cvs=document.createElement('canvas');
+      cvs.width=W;cvs.height=PAD*2+BW*2+wrLines.length*LH+8;
+      const ctx=cvs.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,W,cvs.height);
+      const bx=PAD,by=PAD,bw=W-PAD*2,bh=cvs.height-PAD*2;
+      ctx.strokeStyle='#000';ctx.lineWidth=BW;
+      if(b.style==='box') ctx.strokeRect(bx,by,bw,bh);
+      else if(b.style==='double'){ctx.strokeRect(bx,by,bw,bh);ctx.strokeRect(bx+3,by+3,bw-6,bh-6);}
+      else if(b.style==='round'){
+        const r=8;ctx.beginPath();
+        ctx.moveTo(bx+r,by);ctx.lineTo(bx+bw-r,by);ctx.arcTo(bx+bw,by,bx+bw,by+r,r);
+        ctx.lineTo(bx+bw,by+bh-r);ctx.arcTo(bx+bw,by+bh,bx+bw-r,by+bh,r);
+        ctx.lineTo(bx+r,by+bh);ctx.arcTo(bx,by+bh,bx,by+bh-r,r);
+        ctx.lineTo(bx,by+r);ctx.arcTo(bx,by,bx+r,by,r);ctx.closePath();ctx.stroke();
+      } else if(b.style==='shadow'){
+        ctx.fillStyle='#bbb';ctx.fillRect(bx+4,by+4,bw,bh);
+        ctx.fillStyle='#fff';ctx.fillRect(bx,by,bw,bh);ctx.strokeRect(bx,by,bw,bh);
+      }
+      ctx.fillStyle='#000';ctx.font=`${FS}px monospace`;
+      const tx=b.align==='center'?W/2:b.align==='right'?W-PAD-BW-4:PAD+BW+4;
+      ctx.textAlign=b.align;
+      let ty=PAD+BW+FS+2;for(const l of wrLines){ctx.fillText(l,tx,ty);ty+=LH;}
+      return cvs;
+    }
+
+    case 'progress': {
+      const FS=13,PAD=8,BH=20;
+      const cvs=document.createElement('canvas');cvs.width=W;cvs.height=FS+PAD+BH+PAD;
+      const ctx=cvs.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,W,cvs.height);
+      ctx.fillStyle='#000';ctx.font=`${FS}px monospace`;ctx.textAlign='left';ctx.fillText(b.label,PAD,FS+2);
+      ctx.textAlign='right';ctx.fillText(b.value+'%',W-PAD,FS+2);
+      const bx=PAD,by=FS+PAD,bw=W-PAD*2,bh=BH,filled=Math.round(bw*b.value/100);
+      if(b.style==='hollow'){
+        ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.strokeRect(bx,by,bw,bh);
+        ctx.fillStyle='#000';ctx.fillRect(bx+2,by+2,Math.max(0,filled-4),bh-4);
+      } else if(b.style==='dots'){
+        const DOT=bh-4,step=DOT+4,total=Math.floor(bw/step);
+        for(let i=0;i<total;i++){ctx.beginPath();ctx.arc(bx+i*step+DOT/2,by+bh/2,DOT/2,0,Math.PI*2);ctx.fillStyle=i/total<=b.value/100?'#000':'#ccc';ctx.fill();}
+      } else if(b.style==='steps'){
+        const bars=['▁','▂','▃','▄','▅','▆','▇','█'],step=bw/bars.length;
+        ctx.font=`${bh}px monospace`;ctx.textAlign='left';
+        for(let i=0;i<bars.length;i++){ctx.fillStyle=(i+1)/bars.length<=b.value/100?'#000':'#ccc';ctx.fillText(bars[i],bx+i*step,by+bh-2);}
+      } else {
+        ctx.fillStyle='#ddd';ctx.fillRect(bx,by,bw,bh);
+        ctx.fillStyle='#000';ctx.fillRect(bx,by,filled,bh);
+      }
+      return cvs;
+    }
+
+    case 'badge': {
+      const PAD=10,H=b.size1+b.size2+b.size3+PAD*4+16;
+      const cvs=document.createElement('canvas');cvs.width=W;cvs.height=H;
+      const ctx=cvs.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,W,H);
+      ctx.strokeStyle='#000';ctx.lineWidth=2;ctx.strokeRect(4,4,W-8,H-8);ctx.strokeRect(7,7,W-14,H-14);
+      let y=PAD;ctx.textAlign='center';ctx.fillStyle='#000';
+      ctx.font=`${b.size1}px sans-serif`;ctx.fillText(b.line1,W/2,y+b.size1);y+=b.size1+6;
+      ctx.font=`${b.size2}px sans-serif`;ctx.fillText(b.line2,W/2,y+b.size2);y+=b.size2+6;
+      ctx.font=`bold ${b.size3}px sans-serif`;ctx.fillText(b.line3,W/2,y+b.size3);
+      return cvs;
+    }
+
+    case 'grid': {
+      const cW=b.cellW,rows=b.rows,cols=b.cols;
+      const GW=cols*cW,GH=rows*cW,lH=b.label?16:0;
+      const cvs=document.createElement('canvas');cvs.width=W;cvs.height=GH+lH+8;
+      const ctx=cvs.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,W,cvs.height);
+      const ox=Math.floor((W-GW)/2),oy=4;
+      ctx.strokeStyle='#aaa';ctx.lineWidth=0.5;
+      for(let c=0;c<=cols;c++){ctx.beginPath();ctx.moveTo(ox+c*cW,oy);ctx.lineTo(ox+c*cW,oy+GH);ctx.stroke();}
+      for(let r=0;r<=rows;r++){ctx.beginPath();ctx.moveTo(ox,oy+r*cW);ctx.lineTo(ox+GW,oy+r*cW);ctx.stroke();}
+      ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.strokeRect(ox,oy,GW,GH);
+      if(b.label){ctx.fillStyle='#000';ctx.font='11px monospace';ctx.textAlign='center';ctx.fillText(b.label,W/2,GH+lH+2);}
+      return cvs;
+    }
+
+    case 'tags': {
+      const FS=12,PAD=5,gap=6;
+      const tc=document.createElement('canvas').getContext('2d');tc.font=`${FS}px monospace`;
+      const maxLW=W-10;const tagLines=[];let cur=[],curW=0;
+      for(const tag of b.items){
+        const tw=tc.measureText(tag).width+PAD*2+gap;
+        if(curW+tw>maxLW&&cur.length){tagLines.push(cur);cur=[];curW=0;}
+        cur.push(tag);curW+=tw;
+      }
+      if(cur.length)tagLines.push(cur);
+      const tagH=FS+PAD*2;
+      const cvs=document.createElement('canvas');cvs.width=W;cvs.height=tagLines.length*(tagH+gap)+gap*2;
+      const ctx=cvs.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,W,cvs.height);
+      ctx.font=`${FS}px monospace`;let ty=gap;
+      for(const line of tagLines){
+        const totW=line.reduce((s,t)=>s+tc.measureText(t).width+PAD*2+gap,0)-gap;
+        let tx=Math.floor((W-totW)/2);
+        for(const tag of line){
+          const tw=tc.measureText(tag).width+PAD*2;
+          const r=b.style==='rounded'?9:2;
+          if(b.style==='inverted'){
+            ctx.fillStyle='#000';ctx.beginPath();
+            if(ctx.roundRect)ctx.roundRect(tx,ty,tw,tagH,r);else ctx.rect(tx,ty,tw,tagH);
+            ctx.fill();ctx.fillStyle='#fff';
+          } else {
+            ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.beginPath();
+            if(ctx.roundRect)ctx.roundRect(tx,ty,tw,tagH,r);else ctx.rect(tx,ty,tw,tagH);
+            ctx.stroke();ctx.fillStyle='#000';
+          }
+          ctx.textAlign='left';ctx.fillText(tag,tx+PAD,ty+FS+PAD-1);tx+=tw+gap;
+        }
+        ty+=tagH+gap;
+      }
+      return cvs;
+    }
+
+    case 'calendar': {
+      const now=new Date();
+      const month=(b.month&&b.month>0)?b.month-1:now.getMonth();
+      const year=(b.year&&b.year>0)?b.year:now.getFullYear();
+      const firstDay=new Date(year,month,1).getDay();
+      const daysInMonth=new Date(year,month+1,0).getDate();
+      const DAYS=['Su','Mo','Tu','We','Th','Fr','Sa'];
+      const MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+      const FS=11,cW=Math.floor(W/7),cH=FS+7,PAD=4;
+      const totalRows=Math.ceil((firstDay+daysInMonth)/7);
+      const cvs=document.createElement('canvas');
+      cvs.width=W;cvs.height=PAD+(FS+4)+cH+totalRows*cH+PAD;
+      const ctx=cvs.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,W,cvs.height);
+      // header
+      ctx.font=`bold ${FS+2}px monospace`;ctx.fillStyle='#000';ctx.textAlign='center';
+      ctx.fillText(`${MONTHS[month]} ${year}`,W/2,PAD+FS+2);
+      let y=PAD+FS+6;
+      // day names
+      ctx.font=`bold ${FS}px monospace`;
+      DAYS.forEach((d,i)=>{ctx.fillStyle=i===0?'#888':'#000';ctx.textAlign='center';ctx.fillText(d,i*cW+cW/2,y+FS);});
+      y+=cH;
+      // days
+      ctx.font=`${FS}px monospace`;
+      let day=1,col=firstDay;
+      for(let row=0;row<totalRows;row++){
+        for(let c=col;c<7&&day<=daysInMonth;c++){
+          const isToday=day===now.getDate()&&month===now.getMonth()&&year===now.getFullYear();
+          const cx=c*cW;
+          if(isToday){ctx.fillStyle='#000';ctx.fillRect(cx,y,cW,cH);ctx.fillStyle='#fff';}
+          else ctx.fillStyle=c===0?'#aaa':'#000';
+          ctx.textAlign='center';ctx.fillText(String(day),cx+cW/2,y+FS+2);day++;
+        }
+        col=0;y+=cH;
+      }
+      return cvs;
+    }
   }
   return null;
+}
+
+// ════════════════════════════════════════════
+//  ASCII ART ENGINE — 5×7 pixel bitmap font
+// ════════════════════════════════════════════
+const A57 = {
+  ' ':[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],
+  'A':[[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[1,1,1,1,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1]],
+  'B':[[1,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[1,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[1,1,1,1,0]],
+  'C':[[0,1,1,1,1],[1,0,0,0,0],[1,0,0,0,0],[1,0,0,0,0],[1,0,0,0,0],[1,0,0,0,0],[0,1,1,1,1]],
+  'D':[[1,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,1,1,1,0]],
+  'E':[[1,1,1,1,1],[1,0,0,0,0],[1,0,0,0,0],[1,1,1,1,0],[1,0,0,0,0],[1,0,0,0,0],[1,1,1,1,1]],
+  'F':[[1,1,1,1,1],[1,0,0,0,0],[1,0,0,0,0],[1,1,1,1,0],[1,0,0,0,0],[1,0,0,0,0],[1,0,0,0,0]],
+  'G':[[0,1,1,1,0],[1,0,0,0,0],[1,0,0,0,0],[1,0,1,1,1],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  'H':[[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,1,1,1,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1]],
+  'I':[[1,1,1,1,1],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[1,1,1,1,1]],
+  'J':[[0,0,0,1,1],[0,0,0,0,1],[0,0,0,0,1],[0,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  'K':[[1,0,0,0,1],[1,0,0,1,0],[1,0,1,0,0],[1,1,0,0,0],[1,0,1,0,0],[1,0,0,1,0],[1,0,0,0,1]],
+  'L':[[1,0,0,0,0],[1,0,0,0,0],[1,0,0,0,0],[1,0,0,0,0],[1,0,0,0,0],[1,0,0,0,0],[1,1,1,1,1]],
+  'M':[[1,0,0,0,1],[1,1,0,1,1],[1,0,1,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1]],
+  'N':[[1,0,0,0,1],[1,1,0,0,1],[1,0,1,0,1],[1,0,0,1,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1]],
+  'O':[[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  'P':[[1,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[1,1,1,1,0],[1,0,0,0,0],[1,0,0,0,0],[1,0,0,0,0]],
+  'Q':[[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,1,0,1],[1,0,0,1,0],[0,1,1,0,1]],
+  'R':[[1,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[1,1,1,1,0],[1,0,1,0,0],[1,0,0,1,0],[1,0,0,0,1]],
+  'S':[[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,0],[0,1,1,1,0],[0,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  'T':[[1,1,1,1,1],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0]],
+  'U':[[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  'V':[[1,0,0,0,1],[1,0,0,0,1],[1,0,0,0,1],[0,1,0,1,0],[0,1,0,1,0],[0,1,0,1,0],[0,0,1,0,0]],
+  'W':[[1,0,0,0,1],[1,0,0,0,1],[1,0,1,0,1],[1,0,1,0,1],[1,0,1,0,1],[1,1,0,1,1],[1,0,0,0,1]],
+  'X':[[1,0,0,0,1],[0,1,0,1,0],[0,1,0,1,0],[0,0,1,0,0],[0,1,0,1,0],[0,1,0,1,0],[1,0,0,0,1]],
+  'Y':[[1,0,0,0,1],[1,0,0,0,1],[0,1,0,1,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0]],
+  'Z':[[1,1,1,1,1],[0,0,0,0,1],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[1,0,0,0,0],[1,1,1,1,1]],
+  '0':[[0,1,1,1,0],[1,0,0,0,1],[1,0,0,1,1],[1,0,1,0,1],[1,1,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  '1':[[0,0,1,0,0],[0,1,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[1,1,1,1,1]],
+  '2':[[0,1,1,1,0],[1,0,0,0,1],[0,0,0,0,1],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[1,1,1,1,1]],
+  '3':[[1,1,1,1,0],[0,0,0,0,1],[0,0,0,1,0],[0,0,1,1,0],[0,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  '4':[[0,0,0,1,0],[0,0,1,1,0],[0,1,0,1,0],[1,0,0,1,0],[1,1,1,1,1],[0,0,0,1,0],[0,0,0,1,0]],
+  '5':[[1,1,1,1,1],[1,0,0,0,0],[1,1,1,1,0],[0,0,0,0,1],[0,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  '6':[[0,0,1,1,0],[0,1,0,0,0],[1,0,0,0,0],[1,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  '7':[[1,1,1,1,1],[0,0,0,0,1],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[0,1,0,0,0],[0,1,0,0,0]],
+  '8':[[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,0]],
+  '9':[[0,1,1,1,0],[1,0,0,0,1],[1,0,0,0,1],[0,1,1,1,1],[0,0,0,0,1],[0,0,0,1,0],[0,1,1,0,0]],
+  '!':[[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,1,0,0]],
+  '?':[[0,1,1,1,0],[1,0,0,0,1],[0,0,0,0,1],[0,0,0,1,0],[0,0,1,0,0],[0,0,0,0,0],[0,0,1,0,0]],
+  '.':[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,1,0,0]],
+  ',':[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,1,0,0,0]],
+  '-':[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[1,1,1,1,1],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0]],
+  '+':[[0,0,0,0,0],[0,0,1,0,0],[0,0,1,0,0],[1,1,1,1,1],[0,0,1,0,0],[0,0,1,0,0],[0,0,0,0,0]],
+  '*':[[0,0,0,0,0],[1,0,1,0,1],[0,1,1,1,0],[1,1,1,1,1],[0,1,1,1,0],[1,0,1,0,1],[0,0,0,0,0]],
+  '/':[[0,0,0,0,1],[0,0,0,1,0],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[0,1,0,0,0],[1,0,0,0,0]],
+  ':':[[0,0,0,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,0,0,0],[0,0,1,0,0],[0,0,1,0,0],[0,0,0,0,0]],
+  '#':[[0,1,0,1,0],[0,1,0,1,0],[1,1,1,1,1],[0,1,0,1,0],[1,1,1,1,1],[0,1,0,1,0],[0,1,0,1,0]],
+  '@':[[0,1,1,1,0],[1,0,0,0,1],[1,0,1,1,1],[1,0,1,0,1],[1,0,1,1,0],[1,0,0,0,0],[0,1,1,1,0]],
+  '(':[[0,0,1,0,0],[0,1,0,0,0],[1,0,0,0,0],[1,0,0,0,0],[1,0,0,0,0],[0,1,0,0,0],[0,0,1,0,0]],
+  ')':[[0,0,1,0,0],[0,0,0,1,0],[0,0,0,0,1],[0,0,0,0,1],[0,0,0,0,1],[0,0,0,1,0],[0,0,1,0,0]],
+  '_':[[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[1,1,1,1,1]],
+  '=':[[0,0,0,0,0],[0,0,0,0,0],[1,1,1,1,1],[0,0,0,0,0],[1,1,1,1,1],[0,0,0,0,0],[0,0,0,0,0]],
+  '<':[[0,0,0,0,1],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[0,0,1,0,0],[0,0,0,1,0],[0,0,0,0,1]],
+  '>':[[1,0,0,0,0],[0,1,0,0,0],[0,0,1,0,0],[0,0,0,1,0],[0,0,1,0,0],[0,1,0,0,0],[1,0,0,0,0]],
+};
+
+function renderAsciiArt(text, style, invert, scale, W){
+  const px = Math.max(1, scale*2);  // pixels per bitmap-pixel
+  const CW = 5*px + px;             // char width (5 cols + 1 gap)
+  const CH = 7*px + px;             // char height (7 rows + 1 gap)
+  const PAD = px*2;
+  const lines = text.toUpperCase().split('\n').filter(l=>l.length>0);
+  const H = lines.length * CH + PAD*2;
+  const cvs = document.createElement('canvas');
+  cvs.width = W; cvs.height = H;
+  const ctx = cvs.getContext('2d');
+  // Background
+  ctx.fillStyle = invert ? '#000' : '#fff';
+  ctx.fillRect(0,0,W,H);
+  const imgData = ctx.getImageData(0,0,W,H);
+  const d = imgData.data;
+  const setpx = (x,y,v) => {
+    if(x<0||x>=W||y<0||y>=H) return;
+    const i=(y*W+x)*4;
+    d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
+  };
+  const fg = invert ? 255 : 0;
+  const bg = invert ? 0   : 255;
+  // Init background
+  for(let i=0;i<W*H;i++){d[i*4]=d[i*4+1]=d[i*4+2]=bg;d[i*4+3]=255;}
+
+  lines.forEach((line,li)=>{
+    const lineW = line.length * CW;
+    const ox = Math.floor((W-lineW)/2);
+    const oy = PAD + li*CH;
+    for(let ci=0;ci<line.length;ci++){
+      const glyph = A57[line[ci]] || A57[' '];
+      const charX = ox + ci*CW;
+      for(let gy=0;gy<7;gy++){
+        for(let gx=0;gx<5;gx++){
+          const bit = glyph[gy][gx];
+          if(!bit) continue;
+          // shadow: draw dim pixel offset (+1,+1) first
+          if(style==='shadow'){
+            for(let sy=0;sy<px;sy++) for(let sx=0;sx<px;sx++)
+              setpx(charX+gx*px+sx+1, oy+gy*px+sy+1, invert?200:80);
+          }
+          // main pixel
+          for(let py2=0;py2<px;py2++){
+            for(let px2=0;px2<px;px2++){
+              const ox2=charX+gx*px+px2, oy2=oy+gy*px+py2;
+              if(style==='dots'){
+                const cx2=px2-px/2+.5, cy2=py2-px/2+.5;
+                if(cx2*cx2+cy2*cy2 > (px/2)*(px/2)) continue;
+              }
+              if(style==='outline'){
+                const edgeX=gx===0||gx===4, edgeY=gy===0||gy===6;
+                if(!edgeX&&!edgeY) continue;
+              }
+              if(style==='thin'){
+                if(px2!==0&&py2!==0) continue;
+              }
+              setpx(ox2, oy2, fg);
+            }
+          }
+        }
+      }
+    }
+  });
+  ctx.putImageData(imgData,0,0);
+  return cvs;
 }
 
 async function composeAll(){
