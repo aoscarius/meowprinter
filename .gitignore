@@ -1,3 +1,7 @@
 # Folders
 .vscode
 .trash
+
+# Files
+**/*.txt
+**/*.log

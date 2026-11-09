@@ -75,6 +75,16 @@ function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** Print debug information if debug enabled */
+function dbglog(debug, data) {
+    if (!debug) return;
+    console.debug('[BT]', {
+        length: data.length,
+        hex: Array.from(data, byte => byte.toString(16).padStart(2, '0')).join(' '),
+        bytes: Array.from(data)
+    });
+}
+
 /**
  * CatPrinter — low-level protocol driver.
  *
@@ -144,6 +154,7 @@ class CatPrinter {
             await this.flush();
         }
         this.bufferAppend(data);
+        // dbglog(false, data);
     }
 
     // ── Printer commands ────────────────────────────────────
@@ -152,41 +163,82 @@ class CatPrinter {
         return this.send(this.makePacket(0xa2, bitmapLine));
     }
 
-    async prepare(speed, energy) {
+    /**
+     * Send the job preamble and switch the printer into bitmap-receive mode.
+     *
+     * The sequence mirrors what the ATT btsnoop capture does. The order matters:
+     * energy, print mode and speed are sent AFTER the lattice start marker.
+     *
+     * @param {number} speed    Motor speed. Higher = faster = lighter print.
+     * @param {number} energy   Heater energy, 16-bit (1000-65535).
+     *                          Higher = darker print.
+     * @param {number} [mode=0] Print mode.
+     *                          0 = image mode (default, halftones/photos)
+     *                          1 = text mode (lighter, no halftones)
+     */
+    async prepare(speed, energy, mode = 0) {
         await this.flush();
-        // Get device state
+        
+        // Only 0 and 1 are accepted values; anything else falls back to image mode.
+        const printMode = (mode === 1) ? 1 : 0;
+
+        // [0xa8] query firmware version (the printer replies "1.0.11" via notification).
+        await this.send(this.makePacket(0xa8, bytesLE(0)));
+
+        // [0xbb] init / handshake. Payload 0x01, copied from dump.
+        await this.send(this.makePacket(0xbb, bytesLE(1)));
+
+        // [0xa3] query device state (paper, battery, busy/pause flags).
+        // From dump polls it several times; the reply arrives on the RX characteristic.
         await this.send(this.makePacket(0xa3, bytesLE(0)));
-        // Prepare camera / init sequence
-        await this.send(new Uint8Array([0x51, 0x78, 0xbc, 0x00, 0x01, 0x02, 0x01, 0x2d, 0xff]));
-        // Set DPI to 200
-        await this.send(this.makePacket(0xa4, bytesLE(50)));
-        // Set speed (1=slow/dense … 8=fast/light)
-        await this.send(this.makePacket(0xbd, bytesLE(speed)));
-        // Set energy (1000–65535; higher = darker)
-        await this.send(this.makePacket(0xaf, bytesLE(energy, 2)));
-        // Apply energy
-        await this.send(this.makePacket(0xbe, bytesLE(1)));
-        // Update device
-        await this.send(this.makePacket(0xa9, bytesLE(0)));
-        // Start lattice (marks beginning of bitmap data)
+
+        // [0xa4] print resolution / DPI setting.
+        await this.send(this.makePacket(0xa4, bytesLE(52)));
+
+        // [0xa6] lattice start. Fixed magic sequence that marks the beginning
+        // of the bitmap data. Its last byte (0x2c) is part of the payload.
         await this.send(this.makePacket(0xa6,
             new Uint8Array([0xaa, 0x55, 0x17, 0x38, 0x44, 0x5f, 0x5f, 0x5f, 0x44, 0x38, 0x2c])
         ));
+
+        // [0xaf] heater energy, 2 bytes little-endian. Higher = darker.
+        await this.send(this.makePacket(0xaf, bytesLE(energy, 2)));
+
+        // [0xbe] print mode. 0 = image mode, 1 = text mode.
+        await this.send(this.makePacket(0xbe, bytesLE(printMode)));
+
+        // [0xbd] motor speed. Higher = faster = lighter print.
+        await this.send(this.makePacket(0xbd, bytesLE(speed)));
+
         await this.flush();
     }
 
+    /**
+     * Close the job: re-send speed, feed the paper, end the bitmap data.
+     *
+     * @param {number} feedPoints  Paper to advance after the last row, in dots
+     *                             (2 bytes little-endian).
+     */
     async finish(feedPoints) {
+        // Make sure every pending bitmap row has been sent first.
         await this.flush();
-        // End lattice
+
+        // [0xbd] repeat the print speed before feeding.
+        await this.send(this.makePacket(0xbd, bytesLE(10)));
+
+        // [0xa1] feed the paper forward by feedPoints dots, so the printed
+        // area clears the tear bar.
+        await this.send(this.makePacket(0xa1, bytesLE(feedPoints, 2)));
+
+        // [0xa6] lattice end. Fixed magic sequence (aa 55 17, seven zero bytes,
+        // then 0x17) that marks the end of the bitmap data.
         await this.send(this.makePacket(0xa6,
             new Uint8Array([0xaa, 0x55, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17])
         ));
-        // Reset to max speed for feed
-        await this.send(this.makePacket(0xbd, bytesLE(8)));
-        // Feed paper forward by N points
-        await this.send(this.makePacket(0xa1, bytesLE(feedPoints, 2)));
-        // Final state check
+
+        // [0xa3] final state queries. The printer later notifies 0xae (0x01) when the job is complete.
         await this.send(this.makePacket(0xa3, bytesLE(0)));
+
         await this.flush();
     }
 }
@@ -271,6 +323,7 @@ async function connectBT() {
         printer  = new CatPrinter(btDevice.name || 'GB03', writeToCharacteristic, false);
 
         setDot('ok');
+        document.getElementById('p-model').value = btDevice.name;
         document.getElementById('bt-lbl').textContent = btDevice.name || 'Connected';
         document.getElementById('bt-pill').classList.add('ok');
         document.getElementById('p-dryrun').value = '0';
@@ -292,8 +345,10 @@ async function connectBT() {
 async function writeToCharacteristic(data) {
     if (!btCharTx) return;
     for (let i = 0; i < data.length; i += 20) {
-        await btCharTx.writeValueWithoutResponse(data.slice(i, i + 20));
-        await delay(5);
+        const chunk = data.slice(i, i + 20);
+        await btCharTx.writeValueWithoutResponse(chunk);
+        await delay(1); // Small delay to avoid overwhelming the BLE stack
+        // dbglog(false, chunk);
     }
 }
 
@@ -328,10 +383,10 @@ function setDot(cls) {
 // ============================================================
 
 const DENSITY_PRESETS = {
-    draft:  { energy: 3000,  speed: 8 },  // Very fast, light print (battery-friendly)
-    normal: { energy: 8000,  speed: 5 },  // Balanced
-    bold:   { energy: 18000, speed: 3 },  // Dark, good for photos
-    max:    { energy: 40000, speed: 1 },  // Maximum density, slowest
+    draft:  { energy: 3000,  speed: 15 },  // Very fast, light print (battery-friendly)
+    normal: { energy: 8000,  speed: 10 },  // Balanced
+    bold:   { energy: 18000, speed: 10 },  // Dark, good for photos
+    max:    { energy: 25000, speed: 5 },   // Maximum density, slowest
 };
 
 /** Apply a density preset to the printer settings sliders. */
@@ -2170,7 +2225,7 @@ function drawImageToComposite(ctx, imgEl, offsetY, W, drawH, contrastPct, dither
 	const scratch = document.createElement('canvas');
 	scratch.width = safeW;
 	scratch.height = safeH;
-	const sc = scratch.getContext('2d');
+	const sc = scratch.getContext('2d', { willReadFrequently: true });
 
 	// Apply contrast filter before drawing the source image.
 	if (contrastPct !== 0) sc.filter = `contrast(${100 + contrastPct}%)`;
@@ -2897,7 +2952,7 @@ function canvasToBitmapLines(canvas) {
                         + 0.587 * imageData.data[base + 1]
                         + 0.114 * imageData.data[base + 2];
             if (luma < 128) {
-                row[Math.floor(x / 8)] |= (0x80 >> (x % 8));
+                row[Math.floor(x / 8)] |= (1 << (x % 8));
             }
         }
         lines.push(row);
@@ -3015,6 +3070,7 @@ async function printAll() {
     const speed      = parseInt(document.getElementById('p-speed').value);
     const energy     = parseInt(document.getElementById('p-energy').value);
     const feedPts    = parseInt(document.getElementById('p-feed').value);
+    const mode       = parseInt(document.getElementById('p-mode').value);
 
     // Use connected printer or a dummy dry-run instance
     let activePrinter = printer;
@@ -3057,7 +3113,7 @@ async function printAll() {
 
     // ── Send print data ──────────────────────────────────────────────
     try {
-        await activePrinter.prepare(speed, energy);
+        await activePrinter.prepare(speed, energy, mode);
 
         for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
             await activePrinter.drawLine(bitmapRows[rowIndex]);

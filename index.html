@@ -178,17 +178,17 @@
 
     <div class="drawer-section">Density Preset</div>
     <div class="density-grid" id="density-grid">
-      <div class="density-opt on" onclick="setDensity('draft',this)">
-        <div class="do-name">Draft</div><div class="do-sub">E:3000 S:8</div>
+      <div class="density-opt" onclick="setDensity('draft',this)">
+        <div class="do-name">Draft</div><div class="do-sub">E:3000 S:15</div>
       </div>
       <div class="density-opt" onclick="setDensity('normal',this)">
-        <div class="do-name">Normal</div><div class="do-sub">E:8000 S:5</div>
+        <div class="do-name">Normal</div><div class="do-sub">E:8000 S:10</div>
       </div>
-      <div class="density-opt" onclick="setDensity('bold',this)">
-        <div class="do-name">Bold</div><div class="do-sub">E:18000 S:3</div>
+      <div class="density-opt on" onclick="setDensity('bold',this)">
+        <div class="do-name">Bold</div><div class="do-sub">E:18000 S:10</div>
       </div>
       <div class="density-opt" onclick="setDensity('max',this)">
-        <div class="do-name">Max</div><div class="do-sub">E:40000 S:1</div>
+        <div class="do-name">Max</div><div class="do-sub">E:40000 S:5</div>
       </div>
     </div>
 
@@ -213,21 +213,26 @@
         </select>
       </div>
       <div class="fr">
-        <label>Energy (1–65535) — <span id="ev-e" style="color:var(--y)">3000</span></label>
-        <input type="range" min="1000" max="65535" step="500" value="3000" id="p-energy"
+        <label>Energy (1–30000) — <span id="ev-e" style="color:var(--y)">18000</span></label>
+        <input type="range" min="1000" max="30000" step="500" value="18000" id="p-energy"
           oninput="document.getElementById('ev-e').textContent=this.value">
-      </div>
-      <div class="fr">
-        <label>Speed (1–8 slower=darker) — <span id="ev-s" style="color:var(--y)">8</span></label>
-        <input type="range" min="1" max="8" value="8" id="p-speed"
+        <br/><br/>
+        <label>Speed (1–20 slower=darker) — <span id="ev-s" style="color:var(--y)">10</span></label>
+        <input type="range" min="1" max="20" value="10" id="p-speed"
           oninput="document.getElementById('ev-s').textContent=this.value">
-      </div>
-      <div class="fr">
-        <label>Final Feed (pts) — <span id="ev-f" style="color:var(--y)">80</span></label>
-        <input type="range" min="0" max="200" value="80" id="p-feed"
+        <br/><br/>
+        <label>Final Feed (pts) — <span id="ev-f" style="color:var(--y)">50</span></label>
+        <input type="range" min="0" max="200" value="50" id="p-feed"
           oninput="document.getElementById('ev-f').textContent=this.value">
+        <br/><br/>
       </div>
       <div class="fr">
+        <label>Print mode</label>
+        <select id="p-mode">
+          <option value="0" selected>Image (default)</option>
+          <option value="1">Text (light)</option>
+        </select>
+        <br/><br/>
         <label>Mode</label>
         <select id="p-dryrun">
           <option value="0">Real Print (Bluetooth)</option>

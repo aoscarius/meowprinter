@@ -33,8 +33,8 @@ characteristic** as NOTIFY packets.
 
 The standard ATT MTU without negotiation is **20 bytes**.
 Packets larger than 20 bytes must be split and sent in consecutive 20-byte
-writes with a short delay (~5 ms) between each write.
-The printer reassembles them internally.
+writes with a short delay (~1-5 ms) between each write. The printer reassembles
+them internally.
 
 ---
 
@@ -108,17 +108,17 @@ If the payload is empty (length = 0), CRC8 = `0x00`.
 |--------|------|---------|-------------|
 | `0xA3` | Get Device State | `[0x00]` | Request current status; response arrives on RX |
 | `0xA8` | Get Device Info | `[0x00]` | Request firmware/model info |
-| `0xA9` | Update Device | `[0x00]` | Commit settings; send before starting a print job |
-| `0xA4` | Set DPI | `[50]` | Set resolution; value 50 = 200 DPI (fixed on all known models) |
-| `0xBC` | Prepare Camera | `[0x01, 0x02, 0x01, 0x2D]` | Init sequence; must precede every print job |
+| `0xBB` | Init / Handshake | `[0x01]` | Fixed init sequence observed in later captures |
+| `0xA4` | Set DPI | `[51]` | Set resolution; value 52 = 200 DPI (fixed on all known models) |
+| `0xBC` | Prepare Camera | `[0x01, 0x02, 0x01, 0x2D]` | Older/alternate init sequence found in some captures |
 
 ### Print quality commands
 
 | Opcode | Name | Payload | Description |
 |--------|------|---------|-------------|
-| `0xBD` | Set Speed | `uint8` | 1 (slowest/darkest) … 8 (fastest/lightest) |
-| `0xAF` | Set Energy | `uint16 LE` | 1 000–65 535; higher = more heat = darker print |
-| `0xBE` | Apply Energy | `[0x01]` | Latch the energy value set by 0xAF |
+| `0xBD` | Set Speed | `uint8` | 1 (slowest/darkest) … 20 (fastest/lightest) |
+| `0xAF` | Set Energy | `uint16 LE` | 1000–65535; higher = darker print |
+| `0xBE` | Print Mode | `uint8` | `0` = image mode, `1` = text mode |
 
 ### Bitmap data
 
@@ -127,7 +127,7 @@ If the payload is empty (length = 0), CRC8 = `0x00`.
 | `0xA2` | Draw Line | `N bytes` | One row of 1-bit bitmap data (MSB = leftmost pixel) |
 
 For a 384-pixel-wide printer, each line payload is `ceil(384/8) = 48 bytes`.
-Pixel bit = 1 → print dot (black); 0 → no dot (white / background).
+Pixel bit = 1 → print dot (black); 0 → no dot (white/background).
 
 ### Paper movement
 
@@ -139,8 +139,8 @@ Pixel bit = 1 → print dot (black); 0 → no dot (white / background).
 ### Lattice framing
 
 The lattice commands mark the start and end of a bitmap print session.
-They are not well documented; the byte sequences were captured by traffic
-analysis and are sent verbatim.
+They are not fully documented; the value was recovered from traffic capture and
+is sent verbatim.
 
 ```
 Start lattice (0xA6):
@@ -152,7 +152,60 @@ End lattice (0xA6):
 
 ---
 
-## 5. State Notification Packet (RX)
+## 5. Endianness and Ordering Fixes
+
+This is the key firmware-side correction captured in the newer traffic.
+
+### Fixed: multi-byte values are little-endian
+
+Multi-byte command parameters must be encoded little-endian:
+
+```javascript
+function bytesLE(value, length = 1) {
+    const result = new Uint8Array(length);
+    for (let i = 0; i < length; i++) {
+        result[i] = value & 0xff;
+        value >>= 8;
+    }
+    return result;
+}
+```
+
+That matters for:
+
+- `0xAF` energy: `uint16 LE`
+- `0xA1` feed: `uint16 LE`
+- `0xA4` DPI value if > 255 bytes
+- any future parameters larger than 1 byte
+
+Earlier reversed-engineered code that treated these values as big-endian produced
+incorrect print density, wrong feed distance, and misaligned output.
+
+### Fixed: configuration is sent after the lattice start
+
+The later capture shows that the printer expects the command ordering:
+
+1. `0xA8` (query firmware info)
+2. `0xBB` (init / handshake)
+3. `0xA3` (get state)
+4. `0xA4` (set DPI)
+5. `0xA6` lattice start
+6. `0xAF` set energy
+7. `0xBE` set mode
+8. `0xBD` set speed
+9. `0xA2` bitmap rows
+10. `0xBD` repeat speed
+11. `0xA1` feed
+12. `0xA6` lattice end
+13. `0xA3` final state query
+
+This ordering matters: energy, print mode, and speed are not sent before the
+lattice start marker. Sending them earlier can result in blank output, garbled
+lines, or a non-responding print job.
+
+---
+
+## 6. State Notification Packet (RX)
 
 When the printer sends a state update, the packet follows the same framing.
 The status byte is at **offset 6** (first payload byte):
@@ -168,41 +221,38 @@ Bit  Mask  Meaning
 7    0x80  Busy (print head active)
 ```
 
-The host should poll the Paused bit and hold the TX queue until it clears.
+The host should poll the Paused bit and hold TX writes until it clears.
 
 ---
 
-## 6. Full Print Sequence
+## 7. Full Print Sequence
 
 A complete print job uses this sequence:
 
 ```
-1.  Get Device State        0xA3  [0x00]
-2.  Prepare Camera          0xBC  [0x01,0x02,0x01,0x2D]
-3.  Set DPI                 0xA4  [50]
-4.  Set Speed               0xBD  [speed]          e.g. 5
-5.  Set Energy              0xAF  [energy_lo, energy_hi]  e.g. 0x40,0x1F = 8000
-6.  Apply Energy            0xBE  [0x01]
-7.  Update Device           0xA9  [0x00]
-8.  Start Lattice           0xA6  [AA 55 17 38 44 5F 5F 5F 44 38 2C]
-    ── flush all above in one BLE write sequence ──
-9.  Draw Line × H           0xA2  [48 bytes per line]   (repeat for each row)
-    ── flush in chunks respecting 20-byte MTU ──
-10. End Lattice             0xA6  [AA 55 17 00 00 00 00 00 00 00 17]
-11. Set Speed (max)         0xBD  [0x08]            reset to fast for feed
-12. Feed                    0xA1  [feed_lo, feed_hi] e.g. 80 dot-rows
-13. Get Device State        0xA3  [0x00]
-    ── final flush ──
+1.  Get Device Info         0xA8  [0x00]
+2.  Init / Handshake       0xBB  [0x01]
+3.  Get Device State       0xA3  [0x00]
+4.  Set DPI                0xA4  [52]
+5.  Start Lattice          0xA6  [AA 55 17 38 44 5F 5F 5F 44 38 2C]
+6.  Set Energy             0xAF  [energy_lo, energy_hi]  (uint16 LE)
+7.  Set Print Mode         0xBE  [0 or 1]
+8.  Set Speed              0xBD  [speed]
+9.  Draw Line × H          0xA2  [N bytes per line]
+10. Repeat Speed           0xBD  [10]
+11. Feed                  0xA1  [feed_lo, feed_hi]      (uint16 LE)
+12. End Lattice            0xA6  [AA 55 17 00 00 00 00 00 00 00 17]
+13. Get Device State       0xA3  [0x00]
 ```
 
-Steps 1–8 are buffered and flushed together.
-Step 9 is sent in a loop, flushing every ~200 bytes to respect the internal
-buffer size.
-Steps 10–13 are buffered and flushed together.
+For the app, the supported mode values are:
+
+- `0` = image mode (default, halftones / photos)
+- `1` = text mode (lighter / no halftones)
 
 ---
 
-## 7. Bitmap Line Encoding
+## 8. Bitmap Line Encoding
 
 Each line is a packed 1-bit-per-pixel row, **MSB first** (leftmost pixel =
 bit 7 of byte 0).
@@ -254,7 +304,7 @@ Send as 0xA2 Draw Line packets
 
 ---
 
-## 8. Reverse Engineering Notes
+## 9. Reverse Engineering Notes
 
 ### Tools used
 
@@ -314,7 +364,7 @@ the opcode table and packet framing used in Meow Printer.
 
 ---
 
-## 9. Known Limitations and Quirks
+## 10. Known Limitations and Quirks
 
 | Issue | Notes |
 |-------|-------|
@@ -327,7 +377,7 @@ the opcode table and packet framing used in Meow Printer.
 
 ---
 
-## 10. Quick Reference Card
+## 11. Quick Reference Card
 
 ```
 HEADER        : 51 78
@@ -335,17 +385,19 @@ FOOTER        : FF
 FRAME         : 51 78 [CMD] [TYPE] [LEN_LO] [LEN_HI] [...PAYLOAD] [CRC8] FF
 
 CMD QUICK TABLE
-  A1  Feed paper            payload: uint16 LE (dot-rows)
-  A2  Draw bitmap line      payload: 48 bytes (384-px printer)
-  A3  Get device state      payload: 00
-  A4  Set DPI               payload: 32  (= 50, always)
-  A6  Lattice start/end     payload: fixed 11-byte sequence
-  A8  Get device info       payload: 00
-  A9  Update device         payload: 00
-  AF  Set energy            payload: uint16 LE  (1000–65535)
-  BC  Prepare camera        payload: 01 02 01 2D
-  BD  Set speed             payload: uint8  (1–8)
-  BE  Apply energy          payload: 01
+  A1  Feed paper            payload: uint16 LE
+  A2  Draw bitmap line     payload: 48 bytes (384-px printer)
+  A3  Get device state     payload: 00
+  A4  Set DPI              payload: 52
+  A6  Lattice start/end    payload: fixed 11-byte sequence
+  A8  Get device info      payload: 00
+  A9  Update device        payload: 00 (older dumps only)
+  AA  (not used here)      -
+  AF  Set energy           payload: uint16 LE
+  BB  Init / handshake     payload: 01
+  BC  Prepare camera       payload: 01 02 01 2D
+  BD  Set speed            payload: uint8
+  BE  Print mode           payload: 00 or 01
 
 LATTICE START : AA 55 17 38 44 5F 5F 5F 44 38 2C
 LATTICE END   : AA 55 17 00 00 00 00 00 00 00 17
