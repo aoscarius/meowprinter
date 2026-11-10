@@ -205,6 +205,40 @@
         </select>
       </div>
       <div class="fr">
+        <label>Mode</label>
+        <select id="p-dryrun">
+          <option value="0">Real Print (Bluetooth)</option>
+          <option value="1" selected>Dry Run (Simulation)</option>
+        </select>
+      </div>
+      <div class="fr">
+        <label>Energy (1–30000) — <span id="ev-e" style="color:var(--y)">18000</span></label>
+        <input type="range" min="1000" max="30000" step="500" value="18000" id="p-energy"
+          oninput="document.getElementById('ev-e').textContent=this.value">
+        <label>Speed (1–20 slower=darker) — <span id="ev-s" style="color:var(--y)">10</span></label>
+        <input type="range" min="1" max="20" value="10" id="p-speed"
+          oninput="document.getElementById('ev-s').textContent=this.value">
+        <label>Final Feed (pts) — <span id="ev-f" style="color:var(--y)">50</span></label>
+        <input type="range" min="0" max="200" value="50" id="p-feed"
+          oninput="document.getElementById('ev-f').textContent=this.value">
+      </div>
+      <div class="fr">
+        <label>Solid fill</label>
+        <select id="p-solid">
+          <option value="100">off</option>
+          <option value="75" selected>75%  (default)</option>
+          <option value="50">50%</option>
+        </select>
+        <div class="fr-space"></div>
+        <label>BLE chunk</label>
+        <select id="p-chunk">
+          <option value="20" selected>20 (default)</option>
+          <option value="100">100</option>
+          <option value="180">180</option>
+          <option value="240">240</option>
+        </select>
+      </div>
+      <div class="fr">
         <label>Print Width (px)</label>
         <select id="p-width">
           <option value="384" selected>384 px (standard)</option>
@@ -213,30 +247,10 @@
         </select>
       </div>
       <div class="fr">
-        <label>Energy (1–30000) — <span id="ev-e" style="color:var(--y)">18000</span></label>
-        <input type="range" min="1000" max="30000" step="500" value="18000" id="p-energy"
-          oninput="document.getElementById('ev-e').textContent=this.value">
-        <br/><br/>
-        <label>Speed (1–20 slower=darker) — <span id="ev-s" style="color:var(--y)">10</span></label>
-        <input type="range" min="1" max="20" value="10" id="p-speed"
-          oninput="document.getElementById('ev-s').textContent=this.value">
-        <br/><br/>
-        <label>Final Feed (pts) — <span id="ev-f" style="color:var(--y)">50</span></label>
-        <input type="range" min="0" max="200" value="50" id="p-feed"
-          oninput="document.getElementById('ev-f').textContent=this.value">
-        <br/><br/>
-      </div>
-      <div class="fr">
-        <label>Print mode</label>
+        <label>Print Quality</label>
         <select id="p-mode">
           <option value="0" selected>Image (default)</option>
           <option value="1">Text (light)</option>
-        </select>
-        <br/><br/>
-        <label>Mode</label>
-        <select id="p-dryrun">
-          <option value="0">Real Print (Bluetooth)</option>
-          <option value="1" selected>Dry Run (Simulation)</option>
         </select>
       </div>
     </div>

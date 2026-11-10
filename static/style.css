@@ -266,8 +266,8 @@ body{
 .block-body.open{display:block}
 
 /* ═══ FORM ELEMENTS ══════════════════════════════════ */
-.fr{margin-top:10px}
 .fr label{
+  padding-top:5px; 
   display:block;font-size:.58rem;color:var(--muted);
   letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;
 }
@@ -277,6 +277,7 @@ body{
   font-size:.74rem;padding:8px 10px;outline:none;
   resize:vertical;transition:border-color .15s;
 }
+.fr-space {height: 10px;}
 .fr textarea:focus,.fr input:focus,.fr select:focus{border-color:var(--y)}
 .fr select option{background:var(--s2)}
 .fr textarea{min-height:60px}

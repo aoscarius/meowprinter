@@ -75,6 +75,15 @@ function delay(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/** Yield to the event loop without using setTimeout */
+const yieldChannel = new MessageChannel();
+function yieldNow() {
+    return new Promise(resolve => {
+        yieldChannel.port1.onmessage = () => resolve();
+        yieldChannel.port2.postMessage(null);
+    });
+}
+
 /** Print debug information if debug enabled */
 function dbglog(debug, data) {
     if (!debug) return;
@@ -98,15 +107,36 @@ class CatPrinter {
         this.model     = model;
         this.writeFn   = writeFn;
         this.dry       = dry;
-        this.mtu       = 200;
+        // Send buffer size. The ATT writes seen in the capture are ~240 bytes,
+        // i.e. 4 bitmap rows (56 bytes each) per flush. Bigger groups mean fewer
+        // write bursts; smaller groups react faster to the pause flag.
+        this.mtu       = 240;
         this.buf       = new Uint8Array(this.mtu);
         this.bufLen    = 0;
         this.state     = { pause: 0, busy: 0 };
         this.bytesSent = 0;
+
+        // Adaptive pacing: minimum time between two flushes (ms).
+        // Recomputed from the motor speed in prepare().
+        this.minGapMs    = 0;
+        this.lastFlushAt = 0;
+
+        // Safety net: if the pause flag never clears (lost notification),
+        // stop waiting after this many ms instead of hanging forever.
+        this.pauseTimeoutMs = 5000;
     }
 
-    /** Update internal state from a notification packet received from the printer. */
+    /**
+     * Update internal state from a notification packet received from the printer.
+     *
+     * Only the 0xa3 (state) reply carries the pause/busy flags in byte 6.
+     * Other replies (0xa8 version, 0xbb, 0xae end-of-job...) use byte 6 for
+     * unrelated data and must NOT touch the flow-control state, otherwise a
+     * version string like "Q1.0.11" would look like a permanent pause.
+     */
     notify(msg) {
+        if (!msg || msg.length < 7) return;
+        if (msg[2] !== 0xa3) return;
         this.state = {
             pause: msg[6] & 16,
             busy:  msg[6] & 0x80
@@ -132,20 +162,52 @@ class CatPrinter {
         }
     }
 
-    /** Flush the buffer, waiting if the printer is paused. */
-    async flush() {
+    /**
+     * Block while the printer reports "paused" (flow control).
+     * Dense rows make the printer stall to let the head/battery recover;
+     * sending more data in that window only overflows its small buffer.
+     * Gives up after pauseTimeoutMs so a lost notification cannot hang the job.
+     */
+    async waitIfPaused() {
+        if (!this.state.pause) return;
+        const start = performance.now();
         while (this.state.pause) {
-            await delay(100);
+            if (performance.now() - start > this.pauseTimeoutMs) {
+                this.state = { ...this.state, pause: 0 };
+                break;
+            }
+            // Short poll; only runs while the printer is paused, so the
+            // (throttled) timer cost is irrelevant here.
+            await delay(20);
         }
+    }
+
+    /** Flush the buffer, honouring the pause flag and the adaptive pacing gap. */
+    async flush() {
+        await this.waitIfPaused();
         if (!this.bufLen) return;
+
+        // Adaptive pacing: keep at least minGapMs between two bursts.
+        // Uses a timestamp instead of a fixed delay, so time already spent
+        // writing counts towards the gap.
+        if (!this.dry && this.minGapMs > 0) {
+            const wait = this.minGapMs - (performance.now() - this.lastFlushAt);
+            if (wait > 0) await delay(wait);
+        }
 
         const chunk = this.buf.slice(0, this.bufLen);
         this.bytesSent += chunk.length;
         if (!this.dry) {
             await this.writeFn(chunk);
+            this.lastFlushAt = performance.now();
         }
         this.bufLen = 0;
-        await delay(this.dry ? 2 : 20);
+
+        // Dry run: small awaited delay so the simulation UI can paint.
+        // Real print: only yield to the event loop (setTimeout is throttled
+        // to >= 1 s in background tabs, MessageChannel is not).
+        if (this.dry) await delay(4);
+        else          await yieldNow();
     }
 
     /** Queue a command packet, flushing first if the buffer would overflow. */
@@ -181,6 +243,12 @@ class CatPrinter {
         
         // Only 0 and 1 are accepted values; anything else falls back to image mode.
         const printMode = (mode === 1) ? 1 : 0;
+
+        // Adaptive pacing (heuristic, tune on your hardware): a slower motor
+        // consumes rows more slowly, so the gap between bursts can be larger.
+        // speed 10 -> 0 ms, speed 5 -> 10 ms, speed 1 -> 18 ms.
+        this.minGapMs    = Math.max(0, 20 - 2 * speed);
+        this.lastFlushAt = 0;
 
         // [0xa8] query firmware version (the printer replies "1.0.11" via notification).
         await this.send(this.makePacket(0xa8, bytesLE(0)));
@@ -339,16 +407,41 @@ async function connectBT() {
 }
 
 /**
- * Write data to the TX characteristic in 20-byte chunks.
- * The BLE ATT MTU for most devices is 20 bytes without negotiation.
+ * BLE write chunk size in bytes.
+ * 20 is always safe (default ATT MTU of 23). The official app writes ~240
+ * bytes at once, so larger values may work on your phone/printer pair, but
+ * a write bigger than the negotiated MTU can be silently truncated on some
+ * Android stacks. Test before raising it. Optional UI: a <select id="p-chunk">
+ * with values 20 / 100 / 180 / 240.
+ */
+function getBtChunkSize() {
+    const el = document.getElementById('p-chunk');
+    const v  = el ? parseInt(el.value) : NaN;
+    return (v >= 20 && v <= 512) ? v : 20;
+}
+
+/**
+ * Write data to the TX characteristic in chunks of getBtChunkSize() bytes.
+ * Retries a few times on the transient "GATT operation already in progress"
+ * error that Chrome raises when the BLE queue is momentarily full.
  */
 async function writeToCharacteristic(data) {
     if (!btCharTx) return;
-    for (let i = 0; i < data.length; i += 20) {
-        const chunk = data.slice(i, i + 20);
-        await btCharTx.writeValueWithoutResponse(chunk);
-        await delay(1); // Small delay to avoid overwhelming the BLE stack
-        // dbglog(false, chunk);
+    const chunkSize = getBtChunkSize();
+    for (let i = 0; i < data.length; i += chunkSize) {
+        const chunk = data.slice(i, i + chunkSize);
+        for (let attempt = 0; ; attempt++) {
+            try {
+                await btCharTx.writeValueWithoutResponse(chunk);
+                break;
+            } catch (err) {
+                const transient = /in progress|busy/i.test(err && err.message || '');
+                if (!transient || attempt >= 5 || !btCharTx) throw err;
+                await delay(5 * (attempt + 1));
+            }
+        }
+        // Yield without setTimeout (not throttled in background tabs).
+        await yieldNow();
     }
 }
 
@@ -2367,7 +2460,7 @@ async function drawBlock_qr(ctx, block, y, W) {
         const scratch = document.getElementById('qr-scratch');
         scratch.innerHTML = '';
         try {
-            new QRCode(scratch, {
+            const qr = new QRCode(scratch, {
 				text: block.content || ' ',
 				width: 256,
 				height: 256,
@@ -2405,9 +2498,50 @@ async function drawBlock_qr(ctx, block, y, W) {
 					return;
 				}
 
+				const labelH = block.label ? 22 : 0;
+
+				// Preferred path: draw the QR from its module matrix with an INTEGER
+				// module size. Scaling the 256 px bitmap by a non-integer factor makes
+				// modules 1 px wider or narrower than their neighbours, which breaks
+				// scanning after the 1-bit threshold. A quiet zone of 4 modules (the
+				// QR spec minimum) is enforced as well.
+				const model = qr && qr._oQRCode;
+				if (model && typeof model.getModuleCount === 'function' && typeof model.isDark === 'function') {
+					const count    = model.getModuleCount();
+					const modSize  = Math.max(1, Math.min(Math.floor(W / (count + 8)), Math.floor(290 / count)));
+					const qrSize   = modSize * count;
+					const quiet    = Math.max(Math.max(0, block.margin || 10), modSize * 4);
+					const height   = Math.max(1, quiet + qrSize + Math.ceil(quiet / 2) + labelH);
+					const originX  = Math.floor((W - qrSize) / 2);
+					const originY  = y + quiet;
+
+					ctx.fillStyle = '#fff';
+					ctx.fillRect(0, y, W, height);
+					ctx.fillStyle = '#000';
+					for (let r = 0; r < count; r++) {
+						for (let c = 0; c < count; c++) {
+							if (model.isDark(r, c)) {
+								ctx.fillRect(originX + c * modSize, originY + r * modSize, modSize, modSize);
+							}
+						}
+					}
+
+					if (block.label) {
+						ctx.fillStyle = '#000';
+						ctx.font = 'bold 14px monospace';
+						ctx.textAlign = 'center';
+						ctx.fillText(block.label, W / 2, y + quiet + qrSize + 18);
+					}
+
+					scratch.innerHTML = '';
+					resolve(height);
+					return;
+				}
+
+				// Fallback path (library without access to the module matrix):
+				// scale the rendered bitmap as before.
 				const margin = Math.max(0, block.margin || 10);
 				const qrSize = Math.max(1, Math.min(W - margin * 2, 290));
-                    const labelH = block.label ? 22 : 0;
 				const height = Math.max(1, margin + qrSize + Math.ceil(margin / 2) + labelH);
 
                     ctx.fillStyle = '#fff';
@@ -2828,6 +2962,12 @@ async function renderOneBlock(ctx, block, y, W) {
  *             which corrupts data when the canvas is already clipped or when
  *             the ImageData spans a different height than the destination.
  */
+/** Block types that must be printed exactly as drawn (machine-readable). */
+const PROTECTED_BLOCK_TYPES = new Set(['qr', 'wifi', 'barcode']);
+
+/** [startRow, endRow) ranges of the composite occupied by protected blocks. */
+let _protectedRanges = [];
+
 async function composeAll() {
     const W = getPrintWidth();
 
@@ -2861,6 +3001,9 @@ async function composeAll() {
 	_compositeCtx.fillStyle = '#fff';
 	_compositeCtx.fillRect(0, 0, W, oversizedH);
 
+	// Rows occupied by blocks that must stay pixel-exact (see canvasToBitmapLines).
+	_protectedRanges = [];
+
 	let y = 0;
     for (const block of blocks) {
         _compositeCtx.save();
@@ -2871,7 +3014,13 @@ async function composeAll() {
 		const drawn = await renderOneBlock(_compositeCtx, block, y, W);
 
         _compositeCtx.restore();
-		y += (typeof drawn === 'number' && drawn > 0) ? drawn : 0;
+		const drawnH = (typeof drawn === 'number' && drawn > 0) ? drawn : 0;
+		// Remember QR codes and barcodes: they are machine-read, so the solid-area
+		// halftone must never alter them.
+		if (drawnH > 0 && PROTECTED_BLOCK_TYPES.has(block.type)) {
+			_protectedRanges.push([Math.floor(y), Math.ceil(y + drawnH)]);
+		}
+		y += drawnH;
     }
 
 	// ── Pass 2: copy to a fresh canvas at the exact content height ────────────
@@ -2932,11 +3081,81 @@ async function refreshPreview() {
 // ============================================================
 
 /**
+ * Replace the inside of large solid black areas with a regular dot pattern.
+ *
+ * Why: a thermal head cannot heat all 384 dots of a row at full power at the
+ * same time. On a fully black row the supply voltage sags, so big black
+ * rectangles come out faded (while thin lines stay black) and the printer
+ * stalls, which shows up as stuttering. Thinning the interior of solid areas
+ * keeps every dot hot enough and lets the printer run smoothly.
+ *
+ * Only pixels whose whole (2R+1)x(2R+1) neighbourhood is black are touched,
+ * so outlines, text strokes and fine details stay fully solid.
+ *
+ * @param {Uint8Array} bits       W*H array, 1 = black. Modified in place.
+ * @param {number}     W
+ * @param {number}     H
+ * @param {number}     keepPct    Percent of interior dots kept black (100 = off).
+ *                                >= 88 -> off, >= 63 -> 75 %, otherwise 50 %.
+ * @param {Array}      protectedRanges  [startRow, endRow) ranges to leave untouched.
+ */
+function applySolidHalftone(bits, W, H, keepPct, protectedRanges) {
+    if (keepPct >= 88) return;
+    const R = 3;
+    if (W < 2 * R + 1 || H < 2 * R + 1) return;
+
+    // Summed-area table: lets us test "is this window all black" in O(1).
+    const stride = W + 1;
+    const sat = new Int32Array(stride * (H + 1));
+    for (let y = 0; y < H; y++) {
+        let rowSum = 0;
+        for (let x = 0; x < W; x++) {
+            rowSum += bits[y * W + x];
+            sat[(y + 1) * stride + x + 1] = sat[y * stride + x + 1] + rowSum;
+        }
+    }
+
+    const skipRow = new Uint8Array(H);
+    for (const [a, b] of protectedRanges) {
+        for (let y = Math.max(0, a); y < Math.min(H, b); y++) skipRow[y] = 1;
+    }
+
+    const full = (2 * R + 1) * (2 * R + 1);
+    const use75 = keepPct >= 63;
+
+    for (let y = R; y < H - R; y++) {
+        if (skipRow[y]) continue;
+        for (let x = R; x < W - R; x++) {
+            if (!bits[y * W + x]) continue;
+
+            // Dot pattern: 75 % keeps 3 of 4 dots (diagonal holes),
+            // 50 % is a checkerboard.
+            const hole = use75 ? (((x + 2 * y) & 3) === 0)
+                               : (((x + y) & 1) === 0);
+            if (!hole) continue;
+
+            const sum = sat[(y + R + 1) * stride + x + R + 1]
+                      - sat[(y - R)     * stride + x + R + 1]
+                      - sat[(y + R + 1) * stride + x - R]
+                      + sat[(y - R)     * stride + x - R];
+            if (sum === full) bits[y * W + x] = 0;
+        }
+    }
+}
+
+/**
  * Convert the composite canvas to an array of 1-bit bitmap rows.
  * Each row is a Uint8Array of ceil(width/8) bytes.
  * A pixel is black (printed) when its luminance is below 128.
+ * Bit order is LSB-first: the leftmost pixel of each byte is bit 0.
+ *
+ * @param {HTMLCanvasElement} canvas
+ * @param {Object}  [opts]
+ * @param {number}  [opts.solidFill=75]  Percent of dots kept black inside large
+ *                                       solid areas (100 = no thinning).
  */
-function canvasToBitmapLines(canvas) {
+function canvasToBitmapLines(canvas, opts = {}) {
+    const solidFill   = (opts.solidFill ?? 75);
     const ctx         = canvas.getContext('2d', { willReadFrequently: true });
     const W           = canvas.width;
     const H           = canvas.height;
@@ -2944,14 +3163,24 @@ function canvasToBitmapLines(canvas) {
     const bytesPerRow = Math.ceil(W / 8);
     const lines       = [];
 
+    // Pass 1: threshold to a 1-bit map (1 = black).
+    const bits = new Uint8Array(W * H);
+    for (let i = 0, n = W * H; i < n; i++) {
+        const base = i * 4;
+        const luma = 0.299 * imageData.data[base]
+                   + 0.587 * imageData.data[base + 1]
+                   + 0.114 * imageData.data[base + 2];
+        if (luma < 128) bits[i] = 1;
+    }
+
+    // Pass 2: thin out the inside of big solid areas (QR/barcodes excluded).
+    applySolidHalftone(bits, W, H, solidFill, _protectedRanges);
+
+    // Pass 3: pack to bytes.
     for (let rowY = 0; rowY < H; rowY++) {
         const row = new Uint8Array(bytesPerRow);
         for (let x = 0; x < W; x++) {
-            const base  = (rowY * W + x) * 4;
-            const luma  = 0.299 * imageData.data[base]
-                        + 0.587 * imageData.data[base + 1]
-                        + 0.114 * imageData.data[base + 2];
-            if (luma < 128) {
+            if (bits[rowY * W + x]) {
                 row[Math.floor(x / 8)] |= (1 << (x % 8));
             }
         }
@@ -3065,7 +3294,11 @@ async function printAll() {
 
     // Compose the final output
     const composed   = await composeAll();
-    const bitmapRows = canvasToBitmapLines(composed);
+    // Percent of dots kept black inside big solid areas. Optional UI: a
+    // <select id="p-solid"> with 100 (off) / 75 / 50. Defaults to 75.
+    const solidEl    = document.getElementById('p-solid');
+    const solidFill  = solidEl ? parseInt(solidEl.value) : 75;
+    const bitmapRows = canvasToBitmapLines(composed, { solidFill });
     const totalRows  = bitmapRows.length;
     const speed      = parseInt(document.getElementById('p-speed').value);
     const energy     = parseInt(document.getElementById('p-energy').value);
@@ -3113,20 +3346,29 @@ async function printAll() {
 
     // ── Send print data ──────────────────────────────────────────────
     try {
-        await activePrinter.prepare(speed, energy, mode);
+        // Hold a Web Lock for the whole transfer so Chrome is less likely to
+        // suspend the tab while it is in the background.
+        // Falls back to a plain call if the Web Locks API is not available.
+        const withLock = navigator.locks
+            ? fn => navigator.locks.request('meowprinter-print', fn)
+            : fn => fn();
 
-        for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
-            await activePrinter.drawLine(bitmapRows[rowIndex]);
+        await withLock(async () => {
+            await activePrinter.prepare(speed, energy, mode);
 
-            // Update progress every 8 rows to avoid excessive DOM operations
-            if (rowIndex % 8 === 0) {
-                const fraction = rowIndex / totalRows;
-                setProg(fraction, `Line ${rowIndex} / ${totalRows}`);
-                if (isDryRun) simSetProgress(fraction);
+            for (let rowIndex = 0; rowIndex < totalRows; rowIndex++) {
+                await activePrinter.drawLine(bitmapRows[rowIndex]);
+
+                // Update progress every 8 rows to avoid excessive DOM operations
+                if (rowIndex % 8 === 0) {
+                    const fraction = rowIndex / totalRows;
+                    setProg(fraction, `Line ${rowIndex} / ${totalRows}`);
+                    if (isDryRun) simSetProgress(fraction);
+                }
             }
-        }
 
-        await activePrinter.finish(feedPts);
+            await activePrinter.finish(feedPts);
+        });
 
         setProg(1, 'Done! ✓');
         setTimeout(() => showProg(false), 3000);
